@@ -27,24 +27,20 @@ export default function StepIdentity({ googleName, onClaim }: StepIdentityProps)
   const [error, setError] = useState<string | null>(null);
   const [showNotFound, setShowNotFound] = useState(false);
 
-  // Load initial data: try auto-match + load all results
+  // Only try auto-match on mount — don't load all 500 profiles
   useEffect(() => {
     async function init() {
       try {
-        // Try auto-match with Google name
-        const matchRes = await fetch(
-          `/api/alumni/search?q=${encodeURIComponent(googleName)}`
-        );
-        const matchData = await matchRes.json();
+        if (googleName.trim()) {
+          const matchRes = await fetch(
+            `/api/alumni/search?q=${encodeURIComponent(googleName)}`
+          );
+          const matchData = await matchRes.json();
 
-        if (matchData.data && matchData.data.length === 1) {
-          setSuggestedMatch(matchData.data[0]);
+          if (matchData.data && matchData.data.length === 1) {
+            setSuggestedMatch(matchData.data[0]);
+          }
         }
-
-        // Load all unclaimed profiles
-        const allRes = await fetch("/api/alumni/search?q=");
-        const allData = await allRes.json();
-        setSearchResults(allData.data || []);
       } catch {
         // Silently fail, user can still search
       } finally {
@@ -190,6 +186,10 @@ export default function StepIdentity({ googleName, onClaim }: StepIdentityProps)
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-14 rounded-xl bg-surface border border-border animate-pulse" />
             ))}
+          </div>
+        ) : !searchQuery.trim() && searchResults.length === 0 ? (
+          <div className="text-center py-6">
+            <p className="text-text-muted text-sm">Start typing to search for your name</p>
           </div>
         ) : searchResults.length === 0 ? (
           <div className="text-center py-6">

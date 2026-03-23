@@ -218,7 +218,14 @@ export default function OnboardingFlow({
 
             {step < 4 ? (
               <Button
-                onClick={() => setStep((s) => (s + 1) as OnboardingStep)}
+                onClick={() => {
+                  const nextStep = (step + 1) as OnboardingStep;
+                  // When entering opt-in step, default to "opted_out" if still "not_confirmed"
+                  if (nextStep === 4 && formData.opt_status === "not_confirmed") {
+                    setFormData((prev) => ({ ...prev, opt_status: "opted_out" }));
+                  }
+                  setStep(nextStep);
+                }}
                 disabled={!canProceed()}
               >
                 Continue

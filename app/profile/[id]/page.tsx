@@ -44,11 +44,15 @@ export default async function ProfileDetailPage({
 
   if (!alumni) notFound();
 
+  // Security: only allow viewing opted-in profiles (or your own)
+  const isOwnProfile = alumni.auth_id === user.id;
+  if (!isOwnProfile && alumni.opt_status !== "opted_in") notFound();
+
   const canSeeEmail = viewerOptedIn && alumni.opt_status === "opted_in";
   const rawLinkedIn = alumni.linkedin_url?.trim() || "";
-  const linkedInUrl = rawLinkedIn
-    ? rawLinkedIn.startsWith("http") ? rawLinkedIn : `https://${rawLinkedIn}`
-    : "";
+  const linkedInRegex = /^https?:\/\/(www\.)?linkedin\.com\//i;
+  const normalizedLinkedIn = rawLinkedIn.startsWith("http") ? rawLinkedIn : `https://${rawLinkedIn}`;
+  const linkedInUrl = rawLinkedIn && linkedInRegex.test(normalizedLinkedIn) ? normalizedLinkedIn : "";
   const hasLinkedIn = !!linkedInUrl;
 
   return (

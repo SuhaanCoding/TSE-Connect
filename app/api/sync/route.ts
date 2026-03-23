@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { timingSafeEqual } from "crypto";
+
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 export async function POST(request: Request) {
   const authHeader = request.headers.get("authorization");
   const expectedToken = `Bearer ${process.env.SYNC_SECRET_KEY}`;
 
-  if (!authHeader || authHeader !== expectedToken) {
+  if (!authHeader || !safeCompare(authHeader, expectedToken)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -39,8 +45,9 @@ export async function POST(request: Request) {
       const errDetails = !resultsRes.ok
         ? await resultsRes.text()
         : await everyoneRes.text();
+      console.error("Google Sheets fetch error:", errDetails);
       return NextResponse.json(
-        { error: "Failed to fetch Google Sheets data", details: errDetails },
+        { error: "Failed to fetch Google Sheets data" },
         { status: 502 }
       );
     }
@@ -153,51 +160,60 @@ export async function POST(request: Request) {
     let updated = 0;
     let errors = 0;
 
-    for (const person of alumni) {
-      if (claimedNames.has(person.full_name)) {
-        // Claimed profile: update ONLY career data (don't touch opt_status, contact info, etc.)
-        const { error } = await supabase
-          .from("alumni")
-          .update({
+    // Split into claimed vs unclaimed
+    const claimedAlumni = alumni.filter((a) => claimedNames.has(a.full_name));
+    const unclaimedAlumni = alumni.filter((a) => !claimedNames.has(a.full_name));
+
+    // Batch update claimed profiles (career data only) in groups of 50
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < claimedAlumni.length; i += BATCH_SIZE) {
+      const batch = claimedAlumni.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(
+        batch.map((person) =>
+          supabase
+            .from("alumni")
+            .update({
+              graduation_year: person.graduation_year,
+              current_role: person.current_role,
+              current_company: person.current_company,
+              past_companies: person.past_companies,
+            })
+            .eq("full_name", person.full_name)
+        )
+      );
+      results.forEach((r, idx) => {
+        if (!r.error) updated++;
+        else {
+          errors++;
+          if (errors <= 3) console.error(`Failed to update ${batch[idx].full_name}:`, r.error.message);
+        }
+      });
+    }
+
+    // Batch upsert unclaimed profiles in groups of 50
+    for (let i = 0; i < unclaimedAlumni.length; i += BATCH_SIZE) {
+      const batch = unclaimedAlumni.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(
+        batch.map((person) => {
+          const record: Record<string, unknown> = {
+            full_name: person.full_name,
             graduation_year: person.graduation_year,
             current_role: person.current_role,
             current_company: person.current_company,
             past_companies: person.past_companies,
-          })
-          .eq("full_name", person.full_name);
-
-        if (!error) {
-          updated++;
-        } else {
+            linkedin_url: person.linkedin_url,
+            opt_status: person.opt_status,
+          };
+          return supabase.from("alumni").upsert(record, { onConflict: "full_name" });
+        })
+      );
+      results.forEach((r, idx) => {
+        if (!r.error) synced++;
+        else {
           errors++;
-          if (errors <= 3) {
-            console.error(`Failed to update ${person.full_name}:`, error.message);
-          }
+          if (errors <= 3) console.error(`Failed to upsert ${batch[idx].full_name}:`, r.error.message);
         }
-      } else {
-        // Unclaimed profile: full upsert
-        const record: Record<string, unknown> = {
-          full_name: person.full_name,
-          graduation_year: person.graduation_year,
-          current_role: person.current_role,
-          current_company: person.current_company,
-          past_companies: person.past_companies,
-          linkedin_url: person.linkedin_url,
-          opt_status: person.opt_status,
-        };
-
-        const { error } = await supabase.from("alumni").upsert(record, {
-          onConflict: "full_name",
-        });
-        if (!error) {
-          synced++;
-        } else {
-          errors++;
-          if (errors <= 3) {
-            console.error(`Failed to upsert ${person.full_name}:`, error.message);
-          }
-        }
-      }
+      });
     }
 
     return NextResponse.json({

@@ -54,7 +54,7 @@ export default function Hero({ isSignedIn, isOnboarded }: HeroProps) {
         >
           Find TSE alumni across big tech, defense, quant firms, AI startups,
           and more. Get referrals, career advice, and introductions — from
-          people who&apos;ve been exactly where you are.
+          people across all expertise and industries.
         </p>
 
         <div

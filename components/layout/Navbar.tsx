@@ -1,32 +1,23 @@
 import Link from "next/link";
-import Button from "@/components/ui/Button";
 import Avatar from "@/components/ui/Avatar";
-import { createClient } from "@/lib/supabase/server";
-import { isAdmin } from "@/lib/admin";
+import SignInButton from "@/components/auth/SignInButton";
+import { getCachedUser, getCachedAlumniProfile, getCachedIsAdmin } from "@/lib/supabase/cached";
 import MobileMenu from "./MobileMenu";
 
 export default async function Navbar() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
 
   let alumniName: string | null = null;
   let showAdmin = false;
   let isOnboarded = false;
 
   if (user) {
-    const { data: alumni } = await supabase
-      .from("alumni")
-      .select("full_name, opt_status")
-      .eq("auth_id", user.id)
-      .maybeSingle();
-
+    const alumni = await getCachedAlumniProfile(user.id);
     alumniName = alumni?.full_name ?? user.user_metadata?.full_name ?? null;
     isOnboarded = !!(alumni && alumni.opt_status !== "not_confirmed");
 
     if (user.email) {
-      showAdmin = await isAdmin(user.email);
+      showAdmin = await getCachedIsAdmin(user.email);
     }
   }
 
@@ -55,7 +46,6 @@ export default async function Navbar() {
 
         {user ? (
           <>
-            {/* Desktop nav */}
             <div className="hidden md:flex items-center gap-1">
               {links.map((link) => (
                 <NavLink key={link.href} href={link.href}>
@@ -78,17 +68,12 @@ export default async function Navbar() {
               </div>
             </div>
 
-            {/* Mobile nav */}
             <div className="md:hidden">
               <MobileMenu links={links} userName={alumniName || "User"} />
             </div>
           </>
         ) : (
-          <form action="/auth/sign-in" method="POST">
-            <Button size="sm" variant="secondary" type="submit">
-              Sign In
-            </Button>
-          </form>
+          <SignInButton />
         )}
       </div>
     </nav>

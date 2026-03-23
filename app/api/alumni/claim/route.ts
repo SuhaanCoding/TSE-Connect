@@ -76,7 +76,8 @@ export async function POST(request: Request) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Profile claim error:", error.message);
+    return NextResponse.json({ error: "Failed to claim profile" }, { status: 500 });
   }
 
   return NextResponse.json({ data: updated });

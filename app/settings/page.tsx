@@ -1,23 +1,14 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCachedUser, getCachedAlumniProfile } from "@/lib/supabase/cached";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import EditProfile from "@/components/profile/EditProfile";
 
 export default async function SettingsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCachedUser();
   if (!user) redirect("/");
 
-  const { data: alumni } = await supabase
-    .from("alumni")
-    .select("*")
-    .eq("auth_id", user.id)
-    .single();
-
+  const alumni = await getCachedAlumniProfile(user.id);
   if (!alumni) redirect("/onboarding");
 
   return (

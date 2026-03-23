@@ -31,9 +31,10 @@ export async function GET(request: Request) {
   const years = searchParams.get("years") || "";
   const companies = searchParams.get("companies") || "";
   const companyMatch = searchParams.get("company_match") || "all"; // "all" | "current" | "past"
-  const optStatus = searchParams.get("opt_status") || "";
+  // Security: opt_status filter is not user-controllable on the public endpoint.
+  // Admin dashboard uses /api/admin/alumni for unfiltered access.
   const page = parseInt(searchParams.get("page") || "1", 10);
-  const limit = parseInt(searchParams.get("limit") || "24", 10);
+  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "24", 10), 1), 100);
 
   const companyList = companies
     ? companies.split(",").map((c) => c.trim()).filter(Boolean)
@@ -106,10 +107,6 @@ export async function GET(request: Request) {
         );
       }
 
-      if (optStatus) {
-        filtered = filtered.filter((a: Record<string, unknown>) => a.opt_status === optStatus);
-      }
-
       count = filtered.length;
       const from = (page - 1) * limit;
       data = filtered.slice(from, from + limit);
@@ -149,8 +146,6 @@ export async function GET(request: Request) {
     }
 
 
-    if (optStatus) query = query.eq("opt_status", optStatus);
-
     const from = (page - 1) * limit;
     query = query.range(from, from + limit - 1);
 
@@ -161,7 +156,8 @@ export async function GET(request: Request) {
   }
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Alumni search error:", error.message);
+    return NextResponse.json({ error: "Failed to fetch alumni" }, { status: 500 });
   }
 
   // Determine the search terms to annotate match_type against
@@ -189,8 +185,16 @@ export async function GET(request: Request) {
     const result: Record<string, unknown> = { ...alumni, match_type };
 
     if (!viewerOptedIn) {
+      // Opted-out viewers: see names + companies only, no contact info at all
       result.contact_email = null;
+      result.linkedin_url = null;
       result.preferred_contact = "linkedin";
+    } else {
+      // Opted-in viewers: see LinkedIn for everyone, but email only for other opted-in alumni
+      if (alumni.opt_status !== "opted_in") {
+        result.contact_email = null;
+        result.preferred_contact = "linkedin";
+      }
     }
 
     return result;
@@ -252,15 +256,25 @@ export async function PUT(request: Request) {
     .eq("auth_id", user.id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Alumni update error:", error.message);
+    return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
   }
+
+  // Validate past_companies before passing to sheets write-back
+  const pastCompanies = Array.isArray(body.past_companies)
+    ? body.past_companies
+        .filter((c: unknown) => typeof c === "string")
+        .map((c: string) => c.trim())
+        .filter((c: string) => c.length > 0 && c.length <= 100)
+        .slice(0, 20)
+    : [];
 
   writeBackToSheets({
     full_name: body.full_name,
     graduation_year: body.graduation_year,
     current_role: body.current_role,
     current_company: body.current_company,
-    past_companies: body.past_companies,
+    past_companies: pastCompanies,
   }).catch((err) => console.error("Sheets write-back failed:", err));
 
   return NextResponse.json({ success: true });

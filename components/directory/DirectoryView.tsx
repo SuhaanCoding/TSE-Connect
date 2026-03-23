@@ -75,9 +75,18 @@ export default function DirectoryView({
   );
 
   useEffect(() => {
-    const newFilters = { ...filters, query: searchInput };
+    // Don't fetch if filters are at defaults — server data is already current
+    const isDefault =
+      !searchInput &&
+      filters.graduation_years.length === 0 &&
+      filters.companies.length === 0 &&
+      filters.company_match === "all" &&
+      !filters.opt_status;
+
+    if (isDefault) return;
+
     setPage(1);
-    debouncedFetchRef.current(newFilters, 1);
+    debouncedFetchRef.current({ ...filters, query: searchInput }, 1);
   }, [searchInput, filters]);
 
   const handlePageChange = useCallback((newPage: number) => {

@@ -6,26 +6,17 @@ import LogoMarquee from "@/components/landing/LogoMarquee";
 import Stats from "@/components/landing/Stats";
 import HowItWorks from "@/components/landing/HowItWorks";
 import BottomCTA from "@/components/landing/BottomCTA";
-import { createClient } from "@/lib/supabase/server";
+import { getCachedUser, getCachedAlumniProfile } from "@/lib/supabase/cached";
 
 export default async function Home() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
 
   let isOnboarded = false;
 
   if (user) {
-    const { data: alumni } = await supabase
-      .from("alumni")
-      .select("opt_status")
-      .eq("auth_id", user.id)
-      .maybeSingle();
-
+    const alumni = await getCachedAlumniProfile(user.id);
     isOnboarded = !!(alumni && alumni.opt_status !== "not_confirmed");
 
-    // Redirect authenticated + onboarded users straight to directory
     if (isOnboarded) {
       redirect("/directory");
     }

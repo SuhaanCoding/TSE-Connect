@@ -28,7 +28,8 @@ export async function GET() {
     .order("created_at");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Admin management error:", error.message);
+    return NextResponse.json({ error: "Operation failed" }, { status: 500 });
   }
 
   return NextResponse.json({ data });
@@ -46,13 +47,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "email is required" }, { status: 400 });
   }
 
+  const trimmedEmail = email.trim().toLowerCase();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  if (!emailRegex.test(trimmedEmail)) {
+    return NextResponse.json({ error: "Invalid email format" }, { status: 400 });
+  }
+
   const serviceClient = await createServiceClient();
   const { error } = await serviceClient
     .from("admins")
-    .insert({ email: email.trim().toLowerCase() });
+    .insert({ email: trimmedEmail });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Admin management error:", error.message);
+    return NextResponse.json({ error: "Operation failed" }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });
@@ -77,7 +85,8 @@ export async function DELETE(request: Request) {
     .eq("email", email);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Admin management error:", error.message);
+    return NextResponse.json({ error: "Operation failed" }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });

@@ -28,7 +28,8 @@ export async function GET() {
     .order("full_name");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Admin alumni list error:", error.message);
+    return NextResponse.json({ error: "Failed to fetch alumni" }, { status: 500 });
   }
 
   return NextResponse.json({ data });
@@ -78,7 +79,8 @@ export async function PUT(request: Request) {
     .eq("id", id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Admin alumni update error:", error.message);
+    return NextResponse.json({ error: "Failed to update alumni" }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });
@@ -103,7 +105,8 @@ export async function DELETE(request: Request) {
     .eq("id", id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("Admin alumni delete error:", error.message);
+    return NextResponse.json({ error: "Failed to delete alumni" }, { status: 500 });
   }
 
   return NextResponse.json({ success: true });

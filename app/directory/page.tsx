@@ -1,88 +1,77 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCachedUser, getCachedAlumniProfile } from "@/lib/supabase/cached";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import DirectoryView from "@/components/directory/DirectoryView";
 
 export default async function DirectoryPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCachedUser();
   if (!user) redirect("/");
 
-  // Fetch viewer's opt_status
-  const { data: viewer } = await supabase
-    .from("alumni")
-    .select("opt_status")
-    .eq("auth_id", user.id)
-    .maybeSingle();
+  const viewer = await getCachedAlumniProfile(user.id);
 
-  // Must complete onboarding before accessing directory
   if (!viewer || viewer.opt_status === "not_confirmed") {
     redirect("/onboarding");
   }
 
   const viewerOptedIn = viewer.opt_status === "opted_in";
 
-  // Fetch initial alumni data — ALL alumni
-  const { data: alumni, count } = await supabase
-    .from("alumni")
-    .select("*", { count: "exact" })
-    .order("full_name")
-    .range(0, 23);
+  // Parallelize ALL data queries
+  const supabase = await createClient();
+  const [alumniResult, yearResult, companyResult, pastResult] = await Promise.all([
+    supabase
+      .from("alumni")
+      .select("*", { count: "exact" })
+      .order("full_name")
+      .range(0, 23),
+    supabase
+      .from("alumni")
+      .select("graduation_year")
+      .not("graduation_year", "is", null),
+    supabase
+      .from("alumni")
+      .select("current_company")
+      .not("current_company", "is", null),
+    supabase
+      .from("alumni")
+      .select("past_companies")
+      .not("past_companies", "eq", "{}"),
+  ]);
 
-  // Sanitize: only hide contact_email, NOT linkedin (it's public)
+  const { data: alumni, count } = alumniResult;
+
+  // Sanitize contact info based on viewer opt status
   const sanitizedAlumni = (alumni || []).map((a) => {
     if (!viewerOptedIn) {
+      return { ...a, contact_email: null, linkedin_url: null, preferred_contact: "linkedin" };
+    }
+    if (a.opt_status !== "opted_in") {
       return { ...a, contact_email: null, preferred_contact: "linkedin" };
     }
     return a;
   });
 
-  // Fetch distinct years
-  const { data: yearData } = await supabase
-    .from("alumni")
-    .select("graduation_year")
-    .not("graduation_year", "is", null);
-
-  // Fetch distinct current companies
-  const { data: companyData } = await supabase
-    .from("alumni")
-    .select("current_company")
-    .not("current_company", "is", null);
-
-  // Fetch distinct past companies
-  const { data: pastCompanyData } = await supabase
-    .from("alumni")
-    .select("past_companies")
-    .not("past_companies", "eq", "{}");
-
+  // Process filter options
   const years = [
-    ...new Set(yearData?.map((r) => r.graduation_year).filter(Boolean)),
+    ...new Set(yearResult.data?.map((r) => r.graduation_year).filter(Boolean)),
   ].sort((a, b) => b.localeCompare(a)) as string[];
 
-  const currentCompanies = companyData?.map((r) => r.current_company).filter(Boolean) || [];
-
-  // Flatten all past_companies arrays
-  const pastCompanyNames = (pastCompanyData || [])
+  const currentCompanies = companyResult.data?.map((r) => r.current_company).filter(Boolean) || [];
+  const pastCompanyNames = (pastResult.data || [])
     .flatMap((r) => r.past_companies || [])
     .filter(Boolean);
 
-  // Merge current + past, filter garbage data, deduplicate
   const isValidCompany = (name: string) => {
     if (!name || name.length < 3) return false;
     if (name.startsWith("#")) return false;
-    if (/^\d/.test(name)) return false; // Starts with number
-    if (/^[\d:]+/.test(name)) return false; // Time-like "8:00 AM"
+    if (/^\d/.test(name)) return false;
+    if (/^[\d:]+/.test(name)) return false;
     return true;
   };
 
   const companies = [
-    ...new Set(
-      [...currentCompanies, ...pastCompanyNames].filter(isValidCompany)
-    ),
+    ...new Set([...currentCompanies, ...pastCompanyNames].filter(isValidCompany)),
   ].sort() as string[];
 
   return (
