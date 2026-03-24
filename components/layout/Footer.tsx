@@ -7,14 +7,22 @@ export default function Footer() {
           <p className="text-sm text-text-muted">
             Built by{" "}
             <a
+              href="https://www.linkedin.com/in/suhaan-khurana-356355275/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent hover:text-accent-light transition-colors"
+            >
+              Suhaan
+            </a>{" "}
+            in{" "}
+            <a
               href="https://tse.ucsd.edu"
               target="_blank"
               rel="noopener noreferrer"
               className="text-text-secondary hover:text-foreground transition-colors"
             >
               Triton Software Engineering
-            </a>{" "}
-            at UC San Diego
+            </a>
           </p>
         </div>
       </div>
