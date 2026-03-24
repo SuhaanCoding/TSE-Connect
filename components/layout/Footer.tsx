@@ -14,7 +14,7 @@ export default function Footer() {
             >
               Suhaan
             </a>{" "}
-            in{" "}
+            at{" "}
             <a
               href="https://tse.ucsd.edu"
               target="_blank"
