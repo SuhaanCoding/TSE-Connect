@@ -11,11 +11,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "TSE Connect — The TSE Alumni Network",
   description:
-    "Connect with 180+ engineers across Stripe, Google, Meta, SpaceX, and more. Built by Triton Software Engineering.",
+    "230+ TSE alumni across engineering, product, design, and quant. 80% have worked at top-tier companies. One network.",
   openGraph: {
     title: "TSE Connect — The TSE Alumni Network",
     description:
-      "Connect with 180+ engineers across Stripe, Google, Meta, SpaceX, and more.",
+      "230+ TSE alumni across engineering, product, design, and quant. 80% have worked at top-tier companies. One network.",
     type: "website",
   },
 };

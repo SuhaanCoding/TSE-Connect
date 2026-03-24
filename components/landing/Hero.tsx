@@ -21,7 +21,7 @@ export default function Hero({ isSignedIn, isOnboarded }: HeroProps) {
   };
 
   return (
-    <section className="relative min-h-[30vh] flex items-center justify-center overflow-hidden pt-24 pb-16 md:pt-32 md:pb-20">
+    <section className="relative flex items-center justify-center overflow-hidden pt-20 pb-10 md:pt-24 md:pb-12">
       {/* Dot grid background */}
       <div
         className="absolute inset-0 opacity-[0.03]"
@@ -40,7 +40,7 @@ export default function Hero({ isSignedIn, isOnboarded }: HeroProps) {
         <img
           src="/logo.svg"
           alt="TSE"
-          className="h-14 md:h-16 w-auto mx-auto mb-6 animate-fade-in-up opacity-90"
+          className="h-12 md:h-14 w-auto mx-auto mb-5 animate-fade-in-up opacity-90"
         />
         <h1 className="font-heading font-black text-4xl sm:text-5xl md:text-6xl lg:text-7xl tracking-tight leading-[1] animate-fade-in-up">
           Your TSE network,
@@ -58,7 +58,7 @@ export default function Hero({ isSignedIn, isOnboarded }: HeroProps) {
         </p>
 
         <div
-          className="mt-8 flex flex-col items-center gap-3 animate-fade-in-up"
+          className="mt-6 flex flex-col items-center gap-3 animate-fade-in-up"
           style={{ animationDelay: "200ms" }}
         >
           {isSignedIn ? (
