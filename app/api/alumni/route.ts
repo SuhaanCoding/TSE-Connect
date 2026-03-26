@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { writeBackToSheets } from "@/lib/sheets";
 
 // Escape ILIKE wildcards in user input
 function escapeIlike(input: string): string {
@@ -239,6 +238,15 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Invalid preferred_contact" }, { status: 400 });
   }
 
+  // Validate past_companies
+  const pastCompanies = Array.isArray(body.past_companies)
+    ? body.past_companies
+        .filter((c: unknown) => typeof c === "string")
+        .map((c: string) => c.trim())
+        .filter((c: string) => c.length > 0 && c.length <= 100)
+        .slice(0, 20)
+    : [];
+
   const updateData: Record<string, unknown> = {
     full_name: body.full_name.trim(),
     graduation_year: body.graduation_year?.trim() || null,
@@ -248,6 +256,7 @@ export async function PUT(request: Request) {
     contact_email: body.contact_email?.trim() || null,
     preferred_contact: body.preferred_contact || "linkedin",
     opt_status: body.opt_status || "not_confirmed",
+    past_companies: pastCompanies,
   };
 
   const { error } = await supabase
@@ -259,23 +268,6 @@ export async function PUT(request: Request) {
     console.error("Alumni update error:", error.message);
     return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
   }
-
-  // Validate past_companies before passing to sheets write-back
-  const pastCompanies = Array.isArray(body.past_companies)
-    ? body.past_companies
-        .filter((c: unknown) => typeof c === "string")
-        .map((c: string) => c.trim())
-        .filter((c: string) => c.length > 0 && c.length <= 100)
-        .slice(0, 20)
-    : [];
-
-  writeBackToSheets({
-    full_name: body.full_name,
-    graduation_year: body.graduation_year,
-    current_role: body.current_role,
-    current_company: body.current_company,
-    past_companies: pastCompanies,
-  }).catch((err) => console.error("Sheets write-back failed:", err));
 
   return NextResponse.json({ success: true });
 }

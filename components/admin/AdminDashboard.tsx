@@ -5,7 +5,7 @@ import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Toast from "@/components/ui/Toast";
 import EditAlumniModal from "./EditAlumniModal";
-import type { Alumni, OptStatus } from "@/lib/types";
+import type { Alumni, OptStatus, ScrapeResult } from "@/lib/types";
 
 interface AdminEntry {
   id: string;
@@ -13,7 +13,7 @@ interface AdminEntry {
   created_at: string;
 }
 
-type SortKey = "full_name" | "current_company" | "graduation_year" | "opt_status" | "login_email";
+type SortKey = "full_name" | "current_company" | "graduation_year" | "opt_status" | "login_email" | "last_scraped_at";
 
 export default function AdminDashboard() {
   const [alumni, setAlumni] = useState<Alumni[]>([]);
@@ -23,19 +23,32 @@ export default function AdminDashboard() {
   const [toast, setToast] = useState<string | null>(null);
   const [editingAlumni, setEditingAlumni] = useState<Alumni | null>(null);
   const [newAdminEmail, setNewAdminEmail] = useState("");
-  const [tab, setTab] = useState<"alumni" | "admins" | "sync">("alumni");
+  const [tab, setTab] = useState<"alumni" | "admins" | "scrape">("alumni");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>("full_name");
   const [sortAsc, setSortAsc] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<{
-    synced: number;
-    errors: number;
-    skipped: number;
-    total: number;
-  } | null>(null);
   const [actionMenuId, setActionMenuId] = useState<string | null>(null);
   const actionRef = useRef<HTMLTableCellElement>(null);
+
+  // Scrape state
+  const [scrapeRunId, setScrapeRunId] = useState<string | null>(null);
+  const [scrapeDatasetId, setScrapeDatasetId] = useState<string | null>(null);
+  const [scrapeStatus, setScrapeStatus] = useState<string | null>(null);
+  const [scrapeProfileCount, setScrapeProfileCount] = useState<number>(0);
+  const [scrapeResult, setScrapeResult] = useState<ScrapeResult | null>(null);
+  const [scraping, setScraping] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // CSV import state
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    imported: number;
+    skipped: number;
+    errors: string[];
+    total: number;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Close action menu on outside click
   useEffect(() => {
@@ -46,6 +59,13 @@ export default function AdminDashboard() {
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  // Clean up poll interval on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -74,6 +94,8 @@ export default function AdminDashboard() {
     claimed: alumni.filter((a) => a.auth_id).length,
     unclaimed: alumni.filter((a) => !a.auth_id).length,
   };
+
+  const linkedinCount = alumni.filter((a) => a.linkedin_url).length;
 
   // Filter + sort
   const filtered = alumni
@@ -203,7 +225,7 @@ export default function AdminDashboard() {
     const headers = [
       "full_name", "graduation_year", "current_role", "current_company",
       "linkedin_url", "contact_email", "login_email", "preferred_contact",
-      "opt_status", "past_companies",
+      "opt_status", "past_companies", "last_scraped_at",
     ];
     const rows = alumni.map((a) =>
       headers.map((h) => {
@@ -222,23 +244,124 @@ export default function AdminDashboard() {
     URL.revokeObjectURL(url);
   };
 
-  // Sync
-  const triggerSync = async () => {
-    setSyncing(true);
-    setSyncResult(null);
+  // CSV Import
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setImportResult(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
     try {
-      const res = await fetch("/api/admin/sync", { method: "POST" });
+      const res = await fetch("/api/admin/import", {
+        method: "POST",
+        body: formData,
+      });
       const data = await res.json();
-      setSyncResult(data);
-      if (data.synced !== undefined) {
-        setToast(`Synced ${data.synced} alumni`);
+      setImportResult(data);
+      if (data.imported > 0) {
+        setToast(`Imported ${data.imported} alumni`);
         fetchData();
       }
     } catch {
-      setToast("Sync failed");
+      setToast("Import failed");
     } finally {
-      setSyncing(false);
+      setImporting(false);
+      // Reset file input so same file can be re-uploaded
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  };
+
+  // Scrape functions
+  const startScrape = async () => {
+    setScraping(true);
+    setScrapeResult(null);
+    setScrapeStatus(null);
+    setScrapeDatasetId(null);
+
+    try {
+      const res = await fetch("/api/admin/scrape", { method: "POST" });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setToast(data.error || "Failed to start scrape");
+        setScraping(false);
+        return;
+      }
+
+      setScrapeRunId(data.runId);
+      setScrapeDatasetId(data.datasetId);
+      setScrapeProfileCount(data.profileCount);
+      setScrapeStatus("RUNNING");
+
+      // Start polling for status
+      pollRef.current = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/admin/scrape?runId=${data.runId}`);
+          const statusData = await statusRes.json();
+          setScrapeStatus(statusData.status);
+
+          if (statusData.datasetId) {
+            setScrapeDatasetId(statusData.datasetId);
+          }
+
+          if (statusData.status !== "RUNNING" && statusData.status !== "READY") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setScraping(false);
+
+            if (statusData.status !== "SUCCEEDED") {
+              setToast(`Scrape ended with status: ${statusData.status}`);
+            }
+          }
+        } catch {
+          // Keep polling on transient errors
+        }
+      }, 5000);
+    } catch {
+      setToast("Failed to start scrape");
+      setScraping(false);
+    }
+  };
+
+  const processResults = async () => {
+    if (!scrapeDatasetId) return;
+
+    setProcessing(true);
+    try {
+      const res = await fetch("/api/admin/scrape", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ datasetId: scrapeDatasetId }),
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setScrapeResult(data);
+        setToast(`Updated ${data.updated} alumni from LinkedIn`);
+        fetchData();
+      } else {
+        setToast(data.error || "Failed to process results");
+      }
+    } catch {
+      setToast("Failed to process scrape results");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const resetScrape = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = null;
+    setScrapeRunId(null);
+    setScrapeDatasetId(null);
+    setScrapeStatus(null);
+    setScrapeResult(null);
+    setScraping(false);
+    setProcessing(false);
   };
 
   // Admin management
@@ -313,7 +436,7 @@ export default function AdminDashboard() {
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border">
-          {(["alumni", "sync", "admins"] as const).map((t) => (
+          {(["alumni", "scrape", "admins"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -323,7 +446,11 @@ export default function AdminDashboard() {
                   : "border-transparent text-text-muted hover:text-foreground"
               }`}
             >
-              {t === "alumni" ? `Alumni (${alumni.length})` : t === "admins" ? `Admins (${admins.length})` : "Sync"}
+              {t === "alumni"
+                ? `Alumni (${alumni.length})`
+                : t === "admins"
+                  ? `Admins (${admins.length})`
+                  : "Scrape"}
             </button>
           ))}
         </div>
@@ -342,6 +469,21 @@ export default function AdminDashboard() {
               <Button size="sm" variant="secondary" onClick={exportCSV}>
                 Export CSV
               </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => fileInputRef.current?.click()}
+                loading={importing}
+              >
+                {importing ? "Importing..." : "Import CSV"}
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleImport}
+                className="hidden"
+              />
               {selectedIds.size > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-text-muted">{selectedIds.size} selected</span>
@@ -351,6 +493,48 @@ export default function AdminDashboard() {
                 </div>
               )}
             </div>
+
+            {/* Import result banner */}
+            {importResult && (
+              <div className="bg-surface border border-border rounded-lg p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium text-sm">Import Results</h3>
+                  <button
+                    onClick={() => setImportResult(null)}
+                    className="text-text-muted hover:text-foreground text-xs cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <div>
+                    <span className="text-text-muted">Imported:</span>{" "}
+                    <span className="text-emerald-400 font-medium">{importResult.imported}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-muted">Skipped:</span>{" "}
+                    <span className="text-text-secondary">{importResult.skipped}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-muted">Total rows:</span>{" "}
+                    <span className="text-text-secondary">{importResult.total}</span>
+                  </div>
+                </div>
+                {importResult.errors.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs text-red-400 font-medium mb-1">Errors:</p>
+                    <ul className="text-xs text-text-muted space-y-0.5">
+                      {importResult.errors.slice(0, 5).map((err, i) => (
+                        <li key={i}>{err}</li>
+                      ))}
+                      {importResult.errors.length > 5 && (
+                        <li>...and {importResult.errors.length - 5} more</li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
 
             <p className="text-sm text-text-muted">{filtered.length} of {alumni.length} alumni</p>
 
@@ -375,6 +559,9 @@ export default function AdminDashboard() {
                     </th>
                     <th className="p-3 font-medium text-text-secondary cursor-pointer select-none" onClick={() => handleSort("login_email")}>
                       Account <SortIcon column="login_email" />
+                    </th>
+                    <th className="p-3 font-medium text-text-secondary cursor-pointer select-none" onClick={() => handleSort("last_scraped_at")}>
+                      Scraped <SortIcon column="last_scraped_at" />
                     </th>
                     <th className="p-3 font-medium text-text-secondary w-16">Actions</th>
                   </tr>
@@ -406,6 +593,11 @@ export default function AdminDashboard() {
                         ) : (
                           <span className="text-xs text-text-muted">Unclaimed</span>
                         )}
+                      </td>
+                      <td className="p-3 text-text-muted text-xs">
+                        {a.last_scraped_at
+                          ? new Date(a.last_scraped_at).toLocaleDateString()
+                          : "—"}
                       </td>
                       <td className="p-3 relative" ref={actionMenuId === a.id ? actionRef : undefined}>
                         <button
@@ -443,42 +635,109 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* SYNC TAB */}
-        {tab === "sync" && (
+        {/* SCRAPE TAB */}
+        {tab === "scrape" && (
           <div className="space-y-6 max-w-lg">
             <div>
-              <h2 className="font-heading font-semibold text-lg mb-2">Google Sheets Sync</h2>
-              <p className="text-sm text-text-muted mb-4">
-                Pull the latest alumni data from the Google Spreadsheet. Only unclaimed profiles are updated — claimed profiles are never overwritten.
+              <h2 className="font-heading font-semibold text-lg mb-2">LinkedIn Scrape</h2>
+              <p className="text-sm text-text-muted mb-1">
+                Scrape LinkedIn profiles for all alumni with LinkedIn URLs. Career data (role, company, past companies) will be updated automatically.
               </p>
-              <Button onClick={triggerSync} loading={syncing}>
-                {syncing ? "Syncing..." : "Trigger Sync"}
-              </Button>
+              <p className="text-sm text-text-muted mb-4">
+                <span className="text-accent font-medium">{linkedinCount}</span> alumni with LinkedIn URLs.
+                {linkedinCount > 0 && (
+                  <span className="text-text-muted/60"> Estimated cost: ~${((linkedinCount / 1000) * 4).toFixed(2)}</span>
+                )}
+              </p>
             </div>
 
-            {syncResult && (
-              <div className="bg-surface border border-border rounded-lg p-4 space-y-2">
-                <h3 className="font-medium text-sm">Sync Results</h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-text-muted">Synced:</span>{" "}
-                    <span className="text-emerald-400 font-medium">{syncResult.synced}</span>
-                  </div>
-                  <div>
-                    <span className="text-text-muted">Errors:</span>{" "}
-                    <span className={syncResult.errors > 0 ? "text-red-400 font-medium" : "text-text-secondary"}>{syncResult.errors}</span>
-                  </div>
-                  <div>
-                    <span className="text-text-muted">Skipped (claimed):</span>{" "}
-                    <span className="text-text-secondary">{syncResult.skipped}</span>
-                  </div>
-                  <div>
-                    <span className="text-text-muted">Total in sheet:</span>{" "}
-                    <span className="text-text-secondary">{syncResult.total}</span>
-                  </div>
+            {/* Stage 1: Idle — no active run */}
+            {!scrapeRunId && !scrapeResult && (
+              <Button onClick={startScrape} loading={scraping} disabled={linkedinCount === 0}>
+                Start LinkedIn Scrape
+              </Button>
+            )}
+
+            {/* Stage 2: Running — polling for status */}
+            {scrapeRunId && scrapeStatus && scrapeStatus !== "SUCCEEDED" && !scrapeResult && (
+              <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-3 w-3 rounded-full bg-accent animate-pulse" />
+                  <span className="text-sm font-medium">Scraping {scrapeProfileCount} profiles...</span>
+                </div>
+                <p className="text-xs text-text-muted">
+                  Status: <span className="text-text-secondary font-medium">{scrapeStatus}</span>
+                  {" "}— Checking every 5 seconds
+                </p>
+                <p className="text-xs text-text-muted/60">
+                  Run ID: {scrapeRunId}
+                </p>
+              </div>
+            )}
+
+            {/* Stage 3: Succeeded — ready to process */}
+            {scrapeStatus === "SUCCEEDED" && !scrapeResult && (
+              <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-3 w-3 rounded-full bg-emerald-400" />
+                  <span className="text-sm font-medium">Scrape complete!</span>
+                </div>
+                <p className="text-sm text-text-muted">
+                  {scrapeProfileCount} profiles scraped. Ready to process results and update the database.
+                </p>
+                <div className="flex gap-2">
+                  <Button onClick={processResults} loading={processing}>
+                    {processing ? "Processing..." : "Process Results"}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={resetScrape}>
+                    Cancel
+                  </Button>
                 </div>
               </div>
             )}
+
+            {/* Stage 4: Results displayed */}
+            {scrapeResult && (
+              <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
+                <h3 className="font-medium text-sm">Scrape Results</h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-text-muted">Matched:</span>{" "}
+                    <span className="text-emerald-400 font-medium">{scrapeResult.matched}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-muted">Updated:</span>{" "}
+                    <span className="text-accent font-medium">{scrapeResult.updated}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-muted">Skipped (empty data):</span>{" "}
+                    <span className="text-text-secondary">{scrapeResult.skippedEmpty}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-muted">No match:</span>{" "}
+                    <span className="text-text-secondary">{scrapeResult.noMatch}</span>
+                  </div>
+                  <div>
+                    <span className="text-text-muted">Errors:</span>{" "}
+                    <span className={scrapeResult.errors > 0 ? "text-red-400 font-medium" : "text-text-secondary"}>
+                      {scrapeResult.errors}
+                    </span>
+                  </div>
+                </div>
+                <Button variant="secondary" size="sm" onClick={resetScrape}>
+                  Start New Scrape
+                </Button>
+              </div>
+            )}
+
+            {/* Legacy sync section */}
+            <div className="border-t border-border pt-6 mt-6">
+              <h3 className="font-heading font-semibold text-sm mb-2 text-text-muted">Legacy: Google Sheets Sync</h3>
+              <p className="text-xs text-text-muted mb-3">
+                One-time import from Google Spreadsheet. Use this only for initial data migration.
+              </p>
+              <LegacySyncButton />
+            </div>
           </div>
         )}
 
@@ -545,5 +804,43 @@ function ActionItem({
     >
       {label}
     </button>
+  );
+}
+
+/** Legacy sync button for one-time Google Sheets import */
+function LegacySyncButton() {
+  const [syncing, setSyncing] = useState(false);
+  const [result, setResult] = useState<{
+    synced: number;
+    errors: number;
+    claimed: number;
+    total: number;
+  } | null>(null);
+
+  const triggerSync = async () => {
+    setSyncing(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/admin/sync", { method: "POST" });
+      const data = await res.json();
+      setResult(data);
+    } catch {
+      // silently fail
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <Button size="sm" variant="secondary" onClick={triggerSync} loading={syncing}>
+        {syncing ? "Syncing..." : "Import from Sheets"}
+      </Button>
+      {result && (
+        <div className="text-xs text-text-muted space-y-1">
+          <p>Synced: {result.synced} | Errors: {result.errors} | Claimed (skipped): {result.claimed} | Total: {result.total}</p>
+        </div>
+      )}
+    </div>
   );
 }

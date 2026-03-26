@@ -19,6 +19,29 @@ export interface Alumni {
   opt_status: OptStatus;
   preferred_contact: ContactPreference;
   auth_id: string | null;
+  last_scraped_at: string | null;
+}
+
+// Apify LinkedIn scraper response shape
+export interface ApifyLinkedInProfile {
+  url?: string;
+  profileUrl?: string;
+  linkedInUrl?: string;
+  firstName?: string;
+  lastName?: string;
+  experience?: Array<{
+    position?: string;
+    companyName?: string;
+  }>;
+}
+
+// Scrape run result summary
+export interface ScrapeResult {
+  matched: number;
+  updated: number;
+  skippedEmpty: number;
+  noMatch: number;
+  errors: number;
 }
 
 export interface AlumniFilters {

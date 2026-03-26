@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.fontshare.com",
               "font-src 'self' https://fonts.gstatic.com https://cdn.fontshare.com",
               "img-src 'self' data: https://*.googleusercontent.com https://*.supabase.co",
-              "connect-src 'self' https://*.supabase.co",
+              "connect-src 'self' https://*.supabase.co https://api.apify.com",
               "frame-ancestors 'none'",
             ].join("; "),
           },
