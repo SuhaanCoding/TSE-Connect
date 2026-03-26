@@ -730,14 +730,6 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            {/* Legacy sync section */}
-            <div className="border-t border-border pt-6 mt-6">
-              <h3 className="font-heading font-semibold text-sm mb-2 text-text-muted">Legacy: Google Sheets Sync</h3>
-              <p className="text-xs text-text-muted mb-3">
-                One-time import from Google Spreadsheet. Use this only for initial data migration.
-              </p>
-              <LegacySyncButton />
-            </div>
           </div>
         )}
 
@@ -807,40 +799,3 @@ function ActionItem({
   );
 }
 
-/** Legacy sync button for one-time Google Sheets import */
-function LegacySyncButton() {
-  const [syncing, setSyncing] = useState(false);
-  const [result, setResult] = useState<{
-    synced: number;
-    errors: number;
-    claimed: number;
-    total: number;
-  } | null>(null);
-
-  const triggerSync = async () => {
-    setSyncing(true);
-    setResult(null);
-    try {
-      const res = await fetch("/api/admin/sync", { method: "POST" });
-      const data = await res.json();
-      setResult(data);
-    } catch {
-      // silently fail
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      <Button size="sm" variant="secondary" onClick={triggerSync} loading={syncing}>
-        {syncing ? "Syncing..." : "Import from Sheets"}
-      </Button>
-      {result && (
-        <div className="text-xs text-text-muted space-y-1">
-          <p>Synced: {result.synced} | Errors: {result.errors} | Claimed (skipped): {result.claimed} | Total: {result.total}</p>
-        </div>
-      )}
-    </div>
-  );
-}
