@@ -104,6 +104,18 @@ export default async function ProfileDetailPage({
 
             {/* Contact */}
             <div className="flex flex-col gap-3">
+              {viewerOptedIn && alumni.preferred_contact && (
+                <p className="text-xs text-text-muted">
+                  Prefers contact via{" "}
+                  <span className="text-text-secondary font-medium">
+                    {alumni.preferred_contact === "both"
+                      ? "LinkedIn or Email"
+                      : alumni.preferred_contact === "email"
+                        ? "Email"
+                        : "LinkedIn"}
+                  </span>
+                </p>
+              )}
               {viewerOptedIn ? (
                 <>
                   {hasLinkedIn && (
