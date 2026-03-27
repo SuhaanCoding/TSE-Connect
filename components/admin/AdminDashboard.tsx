@@ -150,14 +150,40 @@ export default function AdminDashboard() {
     setActionMenuId(null);
   };
 
-  const resetAccount = (a: Alumni) =>
+  // Reset user-edited fields back to defaults (keeps auth assignment)
+  const resetFields = (a: Alumni) => {
+    if (!confirm(`Reset all editable fields for ${a.full_name}? This clears contact email, preferred contact, and opt status.`)) return;
     apiAction("PUT", "/api/admin/alumni", {
       id: a.id,
-      auth_id: null,
-      login_email: null,
-      avatar_url: null,
+      contact_email: null,
+      preferred_contact: "linkedin",
       opt_status: "not_confirmed",
-    }, `Reset ${a.full_name}'s account`);
+    }, `Reset fields for ${a.full_name}`);
+  };
+
+  // Unassign account AND reset all fields
+  const unassignAndReset = async (a: Alumni) => {
+    if (!confirm(`Unassign and reset ${a.full_name}? This removes their account link and clears all editable fields.`)) return;
+    // First unassign (clears auth_id, login_email, avatar_url, opt_status)
+    await fetch("/api/admin/alumni/assign", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alumni_id: a.id }),
+    });
+    // Then reset editable fields
+    await fetch("/api/admin/alumni", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: a.id,
+        contact_email: null,
+        preferred_contact: "linkedin",
+      }),
+    });
+    setToast(`Unassigned and reset ${a.full_name}`);
+    setActionMenuId(null);
+    fetchData();
+  };
 
   const forceOptIn = (a: Alumni) =>
     apiAction("PUT", "/api/admin/alumni", { id: a.id, opt_status: "opted_in" }, `${a.full_name} set to opted in`);
@@ -169,9 +195,6 @@ export default function AdminDashboard() {
     if (!confirm(`Delete ${a.full_name}? This cannot be undone.`)) return;
     apiAction("DELETE", "/api/admin/alumni", { id: a.id }, `Deleted ${a.full_name}`);
   };
-
-  const unassign = (a: Alumni) =>
-    apiAction("DELETE", "/api/admin/alumni/assign", { alumni_id: a.id }, `Unassigned ${a.full_name}`);
 
   const handleModalSave = async (data: Partial<Alumni> & { id: string }) => {
     await apiAction("PUT", "/api/admin/alumni", data, "Updated successfully");
@@ -234,6 +257,59 @@ export default function AdminDashboard() {
       );
     }
     setToast(`Deleted ${selectedIds.size} alumni`);
+    setSelectedIds(new Set());
+    fetchData();
+  };
+
+  const bulkResetFields = async () => {
+    if (!confirm(`Reset fields for ${selectedIds.size} alumni?`)) return;
+    const ids = Array.from(selectedIds);
+    const batchSize = 10;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
+      await Promise.all(
+        batch.map((id) =>
+          fetch("/api/admin/alumni", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, contact_email: null, preferred_contact: "linkedin", opt_status: "not_confirmed" }),
+          })
+        )
+      );
+    }
+    setToast(`Reset fields for ${selectedIds.size} alumni`);
+    setSelectedIds(new Set());
+    fetchData();
+  };
+
+  const bulkUnassignAndReset = async () => {
+    if (!confirm(`Unassign and reset ${selectedIds.size} alumni? This removes account links and clears editable fields.`)) return;
+    const ids = Array.from(selectedIds);
+    const batchSize = 10;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
+      // Unassign
+      await Promise.all(
+        batch.map((id) =>
+          fetch("/api/admin/alumni/assign", {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ alumni_id: id }),
+          })
+        )
+      );
+      // Reset fields
+      await Promise.all(
+        batch.map((id) =>
+          fetch("/api/admin/alumni", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, contact_email: null, preferred_contact: "linkedin" }),
+          })
+        )
+      );
+    }
+    setToast(`Unassigned and reset ${selectedIds.size} alumni`);
     setSelectedIds(new Set());
     fetchData();
   };
@@ -516,6 +592,8 @@ export default function AdminDashboard() {
                   <span className="text-sm text-text-muted">{selectedIds.size} selected</span>
                   <Button size="sm" variant="secondary" onClick={() => bulkUpdateStatus("opted_in")}>Opt In</Button>
                   <Button size="sm" variant="secondary" onClick={() => bulkUpdateStatus("not_confirmed")}>Reset Status</Button>
+                  <Button size="sm" variant="secondary" onClick={bulkResetFields}>Reset Fields</Button>
+                  <Button size="sm" variant="secondary" onClick={bulkUnassignAndReset}>Unassign & Reset</Button>
                   <Button size="sm" variant="ghost" onClick={bulkDelete}>Delete</Button>
                 </div>
               )}
@@ -642,12 +720,10 @@ export default function AdminDashboard() {
                             <div className="border-t border-border my-1" />
                             <ActionItem label="Force opt-in" onClick={() => forceOptIn(a)} className="text-emerald-400" />
                             <ActionItem label="Force opt-out" onClick={() => forceOptOut(a)} className="text-yellow-400" />
+                            <div className="border-t border-border my-1" />
+                            <ActionItem label="Reset fields" onClick={() => resetFields(a)} className="text-yellow-400" />
                             {a.auth_id && (
-                              <>
-                                <div className="border-t border-border my-1" />
-                                <ActionItem label="Reset account" onClick={() => resetAccount(a)} className="text-yellow-400" />
-                                <ActionItem label="Unassign account" onClick={() => unassign(a)} className="text-yellow-400" />
-                              </>
+                              <ActionItem label="Unassign & reset" onClick={() => unassignAndReset(a)} className="text-yellow-400" />
                             )}
                             <div className="border-t border-border my-1" />
                             <ActionItem label="Delete" onClick={() => deleteAlumni(a)} className="text-red-400" />

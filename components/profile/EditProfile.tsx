@@ -209,8 +209,23 @@ export default function EditProfile({ alumni }: EditProfileProps) {
             onChange={(e) => handleChange("contact_email", e.target.value)}
             error={formData.contact_email && !isValidEmail(formData.contact_email) ? "Invalid email" : undefined}
           />
+        </section>
+
+        {/* Visibility */}
+        <section className="space-y-4">
+          <h2 className="font-heading font-semibold text-lg border-b border-border pb-2">
+            Visibility
+          </h2>
+          <Toggle
+            checked={formData.opt_status === "opted_in"}
+            onChange={(checked) =>
+              handleChange("opt_status", checked ? "opted_in" : "opted_out")
+            }
+            label="Join the alumni network"
+            description="Make your profile visible and get access to other alumni's contact info. Opting out means you can't see others' contact details either."
+          />
           {formData.opt_status === "opted_in" && (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 pt-2">
               <label className="text-sm font-medium text-text-secondary">
                 Preferred Contact Method
               </label>
@@ -242,21 +257,6 @@ export default function EditProfile({ alumni }: EditProfileProps) {
               )}
             </div>
           )}
-        </section>
-
-        {/* Visibility */}
-        <section className="space-y-4">
-          <h2 className="font-heading font-semibold text-lg border-b border-border pb-2">
-            Visibility
-          </h2>
-          <Toggle
-            checked={formData.opt_status === "opted_in"}
-            onChange={(checked) =>
-              handleChange("opt_status", checked ? "opted_in" : "opted_out")
-            }
-            label="Join the alumni network"
-            description="Make your profile visible and get access to other alumni's contact info. Opting out means you can't see others' contact details either."
-          />
         </section>
 
         {/* Save */}
