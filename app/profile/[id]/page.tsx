@@ -103,7 +103,7 @@ export default async function ProfileDetailPage({
             </div>
 
             {/* Contact */}
-            <div className="space-y-3">
+            <div className="flex flex-col gap-3">
               {/* LinkedIn — always visible */}
               {hasLinkedIn && (
                 <a href={linkedInUrl} target="_blank" rel="noopener noreferrer">

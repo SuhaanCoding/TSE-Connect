@@ -49,7 +49,6 @@ export interface AlumniFilters {
   graduation_years: string[];
   companies: string[];
   company_match: "all" | "current" | "past";
-  opt_status: string | null;
 }
 
 export type OnboardingStep = 1 | 2 | 3 | 4;

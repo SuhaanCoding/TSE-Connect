@@ -10,12 +10,6 @@ interface FilterBarProps {
   companies: string[];
 }
 
-const STATUS_OPTIONS = [
-  { value: "", label: "All Status" },
-  { value: "opted_in", label: "Opted In" },
-  { value: "not_confirmed", label: "Not Confirmed" },
-  { value: "opted_out", label: "Opted Out" },
-];
 
 function MultiSelectDropdown({
   label,
@@ -110,27 +104,6 @@ function MultiSelectDropdown({
         </div>
       )}
 
-      {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {selected.map((item) => (
-            <span
-              key={item}
-              className="inline-flex items-center gap-1 rounded-full bg-accent/10 text-accent-light text-[11px] px-2 py-0.5"
-            >
-              {item}
-              <button
-                onClick={() => toggle(item)}
-                className="hover:text-foreground cursor-pointer"
-                type="button"
-              >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -143,14 +116,27 @@ export default function FilterBar({
 }: FilterBarProps) {
   const hasFilters =
     filters.graduation_years.length > 0 ||
-    filters.companies.length > 0 ||
-    filters.opt_status;
+    filters.companies.length > 0;
+
+  const allTags = [
+    ...filters.graduation_years.map((y) => ({ label: y, type: "year" as const })),
+    ...filters.companies.map((c) => ({ label: c, type: "company" as const })),
+  ];
+
+  const removeTag = (tag: { label: string; type: "year" | "company" }) => {
+    if (tag.type === "year") {
+      onFilterChange({ graduation_years: filters.graduation_years.filter((y) => y !== tag.label) });
+    } else {
+      onFilterChange({ companies: filters.companies.filter((c) => c !== tag.label) });
+    }
+  };
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-start gap-3">
+      {/* Row 1: All filter controls in one line */}
+      <div className="flex flex-wrap items-center gap-3">
         <MultiSelectDropdown
-          label="Year"
+          label="Graduation Year"
           options={years}
           selected={filters.graduation_years}
           onChange={(selected) => onFilterChange({ graduation_years: selected })}
@@ -163,7 +149,6 @@ export default function FilterBar({
           onChange={(selected) => onFilterChange({ companies: selected })}
         />
 
-        {/* Current/Past employee filter — always visible */}
         <select
           value={filters.company_match}
           onChange={(e) =>
@@ -176,20 +161,6 @@ export default function FilterBar({
           <option value="past">Previously Worked</option>
         </select>
 
-        <select
-          value={filters.opt_status || ""}
-          onChange={(e) =>
-            onFilterChange({ opt_status: e.target.value || null })
-          }
-          className="rounded-lg bg-surface border border-border px-3 py-2 text-sm text-foreground focus:outline-none focus:border-accent"
-        >
-          {STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-
         {hasFilters && (
           <button
             onClick={() =>
@@ -197,15 +168,37 @@ export default function FilterBar({
                 graduation_years: [],
                 companies: [],
                 company_match: "all" as const,
-                opt_status: null,
               })
             }
-            className="text-xs text-text-muted hover:text-foreground transition-colors cursor-pointer"
+            className="text-xs text-text-muted hover:text-foreground transition-colors cursor-pointer py-2"
           >
             Clear filters
           </button>
         )}
       </div>
+
+      {/* Row 2: Selected tags rendered separately so they don't push controls */}
+      {allTags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {allTags.map((tag) => (
+            <span
+              key={`${tag.type}-${tag.label}`}
+              className="inline-flex items-center gap-1 rounded-full bg-accent/10 text-accent-light text-[11px] px-2 py-0.5"
+            >
+              {tag.label}
+              <button
+                onClick={() => removeTag(tag)}
+                className="hover:text-foreground cursor-pointer"
+                type="button"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

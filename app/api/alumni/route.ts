@@ -30,8 +30,8 @@ export async function GET(request: Request) {
   const years = searchParams.get("years") || "";
   const companies = searchParams.get("companies") || "";
   const companyMatch = searchParams.get("company_match") || "all"; // "all" | "current" | "past"
-  // Security: opt_status filter is not user-controllable on the public endpoint.
-  // Admin dashboard uses /api/admin/alumni for unfiltered access.
+  // opt_status filtering is admin-only to prevent privacy enumeration.
+  // Regular users cannot discover who opted in/out.
   const page = parseInt(searchParams.get("page") || "1", 10);
   const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "24", 10), 1), 100);
 
@@ -144,7 +144,6 @@ export async function GET(request: Request) {
       query = query.not("past_companies", "eq", "{}");
     }
 
-
     const from = (page - 1) * limit;
     query = query.range(from, from + limit - 1);
 
@@ -182,6 +181,9 @@ export async function GET(request: Request) {
     }
 
     const result: Record<string, unknown> = { ...alumni, match_type };
+
+    // Strip internal metadata from public responses
+    delete result.last_scraped_at;
 
     if (!viewerOptedIn) {
       // Opted-out viewers: see names + companies only, no contact info at all

@@ -35,8 +35,6 @@ export default function DirectoryView({
     graduation_years: [],
     companies: [],
     company_match: "all",
-
-    opt_status: null,
   });
 
   const fetchAlumni = useCallback(async (currentFilters: AlumniFilters, currentPage: number) => {
@@ -51,8 +49,6 @@ export default function DirectoryView({
         params.set("company_match", currentFilters.company_match);
       }
 
-      if (currentFilters.opt_status)
-        params.set("opt_status", currentFilters.opt_status);
       params.set("page", String(currentPage));
       params.set("limit", String(PAGE_LIMIT));
 
@@ -80,8 +76,7 @@ export default function DirectoryView({
       !searchInput &&
       filters.graduation_years.length === 0 &&
       filters.companies.length === 0 &&
-      filters.company_match === "all" &&
-      !filters.opt_status;
+      filters.company_match === "all";
 
     if (isDefault) return;
 
