@@ -91,7 +91,9 @@ export default async function ProfileDetailPage({
                 )}
                 {alumni.graduation_year && (
                   <p className="mt-1 text-sm text-text-muted">
-                    Class of {alumni.graduation_year}
+                    {alumni.graduation_year.toLowerCase() === "currently in school"
+                      ? "Currently in school"
+                      : `Class of ${alumni.graduation_year}`}
                   </p>
                 )}
                 {alumni.tse_role && (
@@ -104,16 +106,22 @@ export default async function ProfileDetailPage({
 
             {/* Contact */}
             <div className="flex flex-col gap-3">
-              {viewerOptedIn && alumni.preferred_contact && (
+              {viewerOptedIn && (
                 <p className="text-xs text-text-muted">
-                  Prefers contact via{" "}
-                  <span className="text-text-secondary font-medium">
-                    {alumni.preferred_contact === "both"
-                      ? "LinkedIn or Email"
-                      : alumni.preferred_contact === "email"
-                        ? "Email"
-                        : "LinkedIn"}
-                  </span>
+                  {alumni.opt_status === "opted_in" ? (
+                    <>
+                      Prefers contact via{" "}
+                      <span className="text-text-secondary font-medium">
+                        {alumni.preferred_contact === "both"
+                          ? "LinkedIn or Email"
+                          : alumni.preferred_contact === "email"
+                            ? "Email"
+                            : "LinkedIn"}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-text-muted">Public profile</span>
+                  )}
                 </p>
               )}
               {viewerOptedIn ? (

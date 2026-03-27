@@ -220,9 +220,25 @@ export default function OnboardingFlow({
               <Button
                 onClick={() => {
                   const nextStep = (step + 1) as OnboardingStep;
-                  // When entering opt-in step, default to "opted_out" if still "not_confirmed"
-                  if (nextStep === 4 && formData.opt_status === "not_confirmed") {
-                    setFormData((prev) => ({ ...prev, opt_status: "opted_out" }));
+                  if (nextStep === 4) {
+                    // Default to "opted_out" if still "not_confirmed"
+                    const updates: Partial<OnboardingFormData> = {};
+                    if (formData.opt_status === "not_confirmed") {
+                      updates.opt_status = "opted_out";
+                    }
+                    // Auto-compute preferred_contact based on available contact info
+                    const hasLinkedIn = !!formData.linkedin_url.trim();
+                    const hasEmail = !!formData.contact_email.trim();
+                    if (hasLinkedIn && hasEmail) {
+                      updates.preferred_contact = "both";
+                    } else if (hasEmail) {
+                      updates.preferred_contact = "email";
+                    } else {
+                      updates.preferred_contact = "linkedin";
+                    }
+                    if (Object.keys(updates).length > 0) {
+                      setFormData((prev) => ({ ...prev, ...updates }));
+                    }
                   }
                   setStep(nextStep);
                 }}

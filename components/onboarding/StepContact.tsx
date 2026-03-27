@@ -1,32 +1,23 @@
 "use client";
 
 import Input from "@/components/ui/Input";
-import Badge from "@/components/ui/Badge";
-import type { ContactPreference } from "@/lib/types";
 
 interface StepContactProps {
   data: {
     linkedin_url: string;
     contact_email: string;
-    preferred_contact: ContactPreference;
   };
   onChange: (field: string, value: string) => void;
   loginEmail: string;
 }
 
-const CONTACT_OPTIONS: { value: ContactPreference; label: string }[] = [
-  { value: "linkedin", label: "LinkedIn" },
-  { value: "email", label: "Email" },
-  { value: "both", label: "Both" },
-];
-
 function isValidUrl(url: string): boolean {
-  if (!url) return true; // Empty is ok
+  if (!url) return true;
   return /^https?:\/\/.+/i.test(url) || /^[\w.-]+\.[\w.-]+/i.test(url);
 }
 
 function isValidEmail(email: string): boolean {
-  if (!email) return true; // Empty is ok
+  if (!email) return true;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
@@ -43,11 +34,6 @@ export default function StepContact({
     ? "Please enter a valid email address"
     : undefined;
 
-  const contactEmailWarning =
-    data.preferred_contact !== "linkedin" && !data.contact_email
-      ? "You selected email as contact method but haven't provided one"
-      : undefined;
-
   return (
     <div className="space-y-6">
       <div>
@@ -55,7 +41,7 @@ export default function StepContact({
           How should people reach you?
         </h2>
         <p className="mt-2 text-sm text-text-muted">
-          Choose how alumni and members can get in touch.
+          Add your contact info so alumni and members can get in touch.
         </p>
       </div>
 
@@ -85,27 +71,6 @@ export default function StepContact({
               to be reached at a different address.
             </p>
           )}
-          {contactEmailWarning && (
-            <p className="mt-1 text-xs text-yellow-400">{contactEmailWarning}</p>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-text-secondary">
-            Preferred Contact Method
-          </label>
-          <div className="flex gap-2">
-            {CONTACT_OPTIONS.map((option) => (
-              <Badge
-                key={option.value}
-                interactive
-                active={data.preferred_contact === option.value}
-                onClick={() => onChange("preferred_contact", option.value)}
-              >
-                {option.label}
-              </Badge>
-            ))}
-          </div>
         </div>
       </div>
     </div>

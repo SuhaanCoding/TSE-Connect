@@ -45,7 +45,42 @@ export default function EditProfile({ alumni }: EditProfileProps) {
   });
 
   const handleChange = (field: string, value: string | string[] | boolean) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      const next = { ...prev, [field]: value };
+
+      // Auto-correct preferred_contact when contact fields change or opt-in toggles
+      if (field === "linkedin_url" || field === "contact_email" || field === "opt_status") {
+        const hasLinkedIn = !!(field === "linkedin_url" ? (value as string).trim() : next.linkedin_url.trim());
+        const hasEmail = !!(field === "contact_email" ? (value as string).trim() : next.contact_email.trim());
+
+        // When toggling opt-in ON, auto-compute default
+        if (field === "opt_status" && value === "opted_in") {
+          if (hasLinkedIn && hasEmail) next.preferred_contact = "both";
+          else if (hasEmail) next.preferred_contact = "email";
+          else next.preferred_contact = "linkedin";
+        }
+
+        // If current preference is invalid for available fields, fix it
+        if (next.preferred_contact === "both" && (!hasLinkedIn || !hasEmail)) {
+          next.preferred_contact = hasEmail ? "email" : "linkedin";
+        } else if (next.preferred_contact === "email" && !hasEmail) {
+          next.preferred_contact = "linkedin";
+        } else if (next.preferred_contact === "linkedin" && !hasLinkedIn && hasEmail) {
+          next.preferred_contact = "email";
+        }
+      }
+
+      return next;
+    });
+  };
+
+  const handleContactSelect = (value: ContactPreference) => {
+    const hasLinkedIn = !!formData.linkedin_url.trim();
+    const hasEmail = !!formData.contact_email.trim();
+    if (value === "email" && !hasEmail) return;
+    if (value === "linkedin" && !hasLinkedIn) return;
+    if (value === "both" && (!hasLinkedIn || !hasEmail)) return;
+    setFormData((prev) => ({ ...prev, preferred_contact: value }));
   };
 
   const handleSubmit = async () => {
@@ -174,23 +209,39 @@ export default function EditProfile({ alumni }: EditProfileProps) {
             onChange={(e) => handleChange("contact_email", e.target.value)}
             error={formData.contact_email && !isValidEmail(formData.contact_email) ? "Invalid email" : undefined}
           />
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-text-secondary">
-              Preferred Contact Method
-            </label>
-            <div className="flex gap-2">
-              {(["linkedin", "email", "both"] as const).map((option) => (
-                <Badge
-                  key={option}
-                  interactive
-                  active={formData.preferred_contact === option}
-                  onClick={() => handleChange("preferred_contact", option)}
-                >
-                  {option.charAt(0).toUpperCase() + option.slice(1)}
-                </Badge>
-              ))}
+          {formData.opt_status === "opted_in" && (
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-text-secondary">
+                Preferred Contact Method
+              </label>
+              <div className="flex gap-2">
+                {(["linkedin", "email", "both"] as const).map((option) => {
+                  const hasLinkedIn = !!formData.linkedin_url.trim();
+                  const hasEmail = !!formData.contact_email.trim();
+                  const disabled =
+                    (option === "email" && !hasEmail) ||
+                    (option === "linkedin" && !hasLinkedIn) ||
+                    (option === "both" && (!hasLinkedIn || !hasEmail));
+                  return (
+                    <Badge
+                      key={option}
+                      interactive
+                      active={formData.preferred_contact === option}
+                      onClick={() => handleContactSelect(option)}
+                      className={disabled ? "opacity-40 cursor-not-allowed" : ""}
+                    >
+                      {option.charAt(0).toUpperCase() + option.slice(1)}
+                    </Badge>
+                  );
+                })}
+              </div>
+              {!formData.linkedin_url.trim() && !formData.contact_email.trim() && (
+                <p className="text-xs text-yellow-400">
+                  Add a LinkedIn URL or contact email to set your preferred contact method.
+                </p>
+              )}
             </div>
-          </div>
+          )}
         </section>
 
         {/* Visibility */}

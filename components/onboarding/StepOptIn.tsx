@@ -1,17 +1,44 @@
 "use client";
 
 import Toggle from "@/components/ui/Toggle";
-import type { OptStatus } from "@/lib/types";
+import Badge from "@/components/ui/Badge";
+import type { OptStatus, ContactPreference } from "@/lib/types";
 
 interface StepOptInProps {
   data: {
     opt_status: OptStatus;
+    preferred_contact: ContactPreference;
+    linkedin_url: string;
+    contact_email: string;
   };
   onChange: (field: string, value: string) => void;
 }
 
+const CONTACT_OPTIONS: { value: ContactPreference; label: string }[] = [
+  { value: "linkedin", label: "LinkedIn" },
+  { value: "email", label: "Email" },
+  { value: "both", label: "Both" },
+];
+
 export default function StepOptIn({ data, onChange }: StepOptInProps) {
   const isOptedIn = data.opt_status === "opted_in";
+  const hasLinkedIn = !!data.linkedin_url?.trim();
+  const hasEmail = !!data.contact_email?.trim();
+
+  const handleContactSelect = (value: ContactPreference) => {
+    if (value === "email" && !hasEmail) return;
+    if (value === "linkedin" && !hasLinkedIn) return;
+    if (value === "both" && (!hasLinkedIn || !hasEmail)) return;
+    onChange("preferred_contact", value);
+  };
+
+  const getDisabledReason = (value: ContactPreference): string | null => {
+    if (value === "email" && !hasEmail) return "Add a contact email in the previous step";
+    if (value === "linkedin" && !hasLinkedIn) return "Add a LinkedIn URL in the previous step";
+    if (value === "both" && !hasLinkedIn) return "Add a LinkedIn URL in the previous step";
+    if (value === "both" && !hasEmail) return "Add a contact email in the previous step";
+    return null;
+  };
 
   return (
     <div className="space-y-6">
@@ -53,10 +80,53 @@ export default function StepOptIn({ data, onChange }: StepOptInProps) {
             )}
           </p>
           <p className="text-xs text-text-muted">
-            You can change this anytime from your profile.
+            You can change this anytime from your settings.
           </p>
         </div>
       </div>
+
+      {isOptedIn && (
+        <div className="p-6 rounded-xl bg-surface border border-border space-y-3">
+          <label className="text-sm font-medium text-text-secondary">
+            Preferred Contact Method
+          </label>
+          <p className="text-xs text-text-muted">
+            How would you like people to reach you?
+          </p>
+          <div className="flex gap-2">
+            {CONTACT_OPTIONS.map((option) => {
+              const disabled = !!getDisabledReason(option.value);
+              return (
+                <Badge
+                  key={option.value}
+                  interactive
+                  active={data.preferred_contact === option.value}
+                  onClick={() => handleContactSelect(option.value)}
+                  className={disabled ? "opacity-40 cursor-not-allowed" : ""}
+                >
+                  {option.label}
+                </Badge>
+              );
+            })}
+          </div>
+          {CONTACT_OPTIONS.map((option) => {
+            const reason = getDisabledReason(option.value);
+            if (reason && data.preferred_contact === option.value) {
+              return (
+                <p key={option.value} className="text-xs text-yellow-400">
+                  {reason}
+                </p>
+              );
+            }
+            return null;
+          })}
+          {!hasLinkedIn && !hasEmail && (
+            <p className="text-xs text-yellow-400">
+              Add a LinkedIn URL or contact email in the previous step to set your preferred contact method.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
