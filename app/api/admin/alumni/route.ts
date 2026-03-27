@@ -86,6 +86,58 @@ export async function PUT(request: Request) {
   return NextResponse.json({ success: true });
 }
 
+export async function POST(request: Request) {
+  const user = await requireAdmin();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  }
+
+  const body = await request.json();
+
+  if (!body.full_name || typeof body.full_name !== "string" || !body.full_name.trim()) {
+    return NextResponse.json({ error: "full_name is required" }, { status: 400 });
+  }
+
+  const ALLOWED_FIELDS = [
+    "full_name", "graduation_year", "current_role", "current_company",
+    "past_companies", "linkedin_url", "contact_email", "preferred_contact",
+    "opt_status", "tse_role",
+  ];
+  const VALID_OPT_STATUS = ["opted_in", "opted_out", "not_confirmed"];
+  const VALID_CONTACT = ["linkedin", "email", "both"];
+
+  const record: Record<string, unknown> = {};
+  for (const field of ALLOWED_FIELDS) {
+    if (body[field] !== undefined) {
+      record[field] = body[field];
+    }
+  }
+
+  if (record.opt_status && !VALID_OPT_STATUS.includes(record.opt_status as string)) {
+    return NextResponse.json({ error: "Invalid opt_status" }, { status: 400 });
+  }
+  if (record.preferred_contact && !VALID_CONTACT.includes(record.preferred_contact as string)) {
+    return NextResponse.json({ error: "Invalid preferred_contact" }, { status: 400 });
+  }
+
+  const serviceClient = await createServiceClient();
+  const { data, error } = await serviceClient
+    .from("alumni")
+    .insert(record)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      return NextResponse.json({ error: "An alumni with this name already exists" }, { status: 409 });
+    }
+    console.error("Admin alumni create error:", error.message);
+    return NextResponse.json({ error: "Failed to create alumni" }, { status: 500 });
+  }
+
+  return NextResponse.json({ data }, { status: 201 });
+}
+
 export async function DELETE(request: Request) {
   const user = await requireAdmin();
   if (!user) {

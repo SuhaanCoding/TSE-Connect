@@ -1,0 +1,199 @@
+"use client";
+
+import { useState } from "react";
+import Input from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
+import Badge from "@/components/ui/Badge";
+import type { OptStatus, ContactPreference } from "@/lib/types";
+
+interface AddAlumniModalProps {
+  onSave: (data: Record<string, unknown>) => Promise<void>;
+  onClose: () => void;
+}
+
+export default function AddAlumniModal({ onSave, onClose }: AddAlumniModalProps) {
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    full_name: "",
+    graduation_year: "",
+    current_role: "",
+    current_company: "",
+    linkedin_url: "",
+    contact_email: "",
+    preferred_contact: "linkedin" as ContactPreference,
+    opt_status: "not_confirmed" as OptStatus,
+    past_companies: [] as string[],
+  });
+  const [newPastCompany, setNewPastCompany] = useState("");
+
+  const handleSave = async () => {
+    if (!form.full_name.trim()) return;
+    setSaving(true);
+    await onSave(form);
+    setSaving(false);
+  };
+
+  const addPastCompany = () => {
+    const trimmed = newPastCompany.trim();
+    if (trimmed && !form.past_companies.some((c) => c.toLowerCase() === trimmed.toLowerCase())) {
+      setForm((f) => ({ ...f, past_companies: [...f.past_companies, trimmed] }));
+      setNewPastCompany("");
+    } else if (trimmed) {
+      setNewPastCompany("");
+    }
+  };
+
+  const removePastCompany = (index: number) => {
+    setForm((f) => ({ ...f, past_companies: f.past_companies.filter((_, i) => i !== index) }));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-background border border-border rounded-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="font-heading font-bold text-xl">Add Alumni</h2>
+          <button
+            onClick={onClose}
+            className="text-text-muted hover:text-foreground cursor-pointer"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Full Name *"
+            value={form.full_name}
+            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+            placeholder="Jane Doe"
+          />
+          <Input
+            label="Graduation Year"
+            value={form.graduation_year}
+            onChange={(e) => setForm({ ...form, graduation_year: e.target.value })}
+            placeholder="2024"
+          />
+          <Input
+            label="Current Role"
+            value={form.current_role}
+            onChange={(e) => setForm({ ...form, current_role: e.target.value })}
+            placeholder="Software Engineer"
+          />
+          <Input
+            label="Current Company"
+            value={form.current_company}
+            onChange={(e) => setForm({ ...form, current_company: e.target.value })}
+            placeholder="Google"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="LinkedIn URL"
+            value={form.linkedin_url}
+            onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })}
+            placeholder="https://linkedin.com/in/..."
+          />
+          <Input
+            label="Contact Email"
+            value={form.contact_email}
+            onChange={(e) => setForm({ ...form, contact_email: e.target.value })}
+            placeholder="jane@example.com"
+          />
+        </div>
+
+        <div>
+          <label className="text-sm font-medium text-text-secondary block mb-2">
+            Preferred Contact
+          </label>
+          <div className="flex gap-2">
+            {(["linkedin", "email", "both"] as const).map((opt) => (
+              <Badge
+                key={opt}
+                interactive
+                active={form.preferred_contact === opt}
+                onClick={() => setForm({ ...form, preferred_contact: opt })}
+              >
+                {opt.charAt(0).toUpperCase() + opt.slice(1)}
+              </Badge>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-sm font-medium text-text-secondary block mb-2">
+            Opt Status
+          </label>
+          <div className="flex gap-2">
+            {(["opted_in", "not_confirmed", "opted_out"] as const).map((s) => (
+              <Badge
+                key={s}
+                interactive
+                active={form.opt_status === s}
+                onClick={() => setForm({ ...form, opt_status: s })}
+                className={
+                  form.opt_status === s
+                    ? s === "opted_in"
+                      ? "bg-emerald-500/20 text-emerald-400"
+                      : s === "opted_out"
+                        ? "bg-red-500/20 text-red-400"
+                        : ""
+                    : ""
+                }
+              >
+                {s === "opted_in" ? "Opted In" : s === "opted_out" ? "Opted Out" : "Not Confirmed"}
+              </Badge>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-sm font-medium text-text-secondary block mb-2">
+            Past Companies
+          </label>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {form.past_companies.map((company, i) => (
+              <span
+                key={`${company}-${i}`}
+                className="inline-flex items-center gap-1 rounded-full bg-surface border border-border text-xs px-2.5 py-1"
+              >
+                {company}
+                <button
+                  onClick={() => removePastCompany(i)}
+                  className="text-text-muted hover:text-red-400 cursor-pointer"
+                >
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              className="flex-1 rounded-lg bg-[#141416] border border-border px-3 py-1.5 text-sm text-foreground placeholder:text-text-muted focus:outline-none focus:border-accent"
+              placeholder="Add company..."
+              value={newPastCompany}
+              onChange={(e) => setNewPastCompany(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addPastCompany())}
+            />
+            <Button size="sm" variant="secondary" onClick={addPastCompany}>
+              Add
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2 border-t border-border">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} loading={saving} disabled={!form.full_name.trim()}>
+            Add Alumni
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

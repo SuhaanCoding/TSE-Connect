@@ -5,6 +5,7 @@ import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Toast from "@/components/ui/Toast";
 import EditAlumniModal from "./EditAlumniModal";
+import AddAlumniModal from "./AddAlumniModal";
 import type { Alumni, OptStatus, ScrapeResult } from "@/lib/types";
 
 interface AdminEntry {
@@ -22,6 +23,7 @@ export default function AdminDashboard() {
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [editingAlumni, setEditingAlumni] = useState<Alumni | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [newAdminEmail, setNewAdminEmail] = useState("");
   const [tab, setTab] = useState<"alumni" | "admins" | "scrape">("alumni");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -174,6 +176,22 @@ export default function AdminDashboard() {
   const handleModalSave = async (data: Partial<Alumni> & { id: string }) => {
     await apiAction("PUT", "/api/admin/alumni", data, "Updated successfully");
     setEditingAlumni(null);
+  };
+
+  const handleAddSave = async (data: Record<string, unknown>) => {
+    const res = await fetch("/api/admin/alumni", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (res.ok) {
+      setToast(`Added ${data.full_name}`);
+      setShowAddModal(false);
+      fetchData();
+    } else {
+      const err = await res.json();
+      setToast(err.error || "Failed to add alumni");
+    }
   };
 
   // Bulk — process in batches of 10
@@ -411,6 +429,12 @@ export default function AdminDashboard() {
           onClose={() => setEditingAlumni(null)}
         />
       )}
+      {showAddModal && (
+        <AddAlumniModal
+          onSave={handleAddSave}
+          onClose={() => setShowAddModal(false)}
+        />
+      )}
 
       <div className="space-y-6">
         <h1 className="font-heading font-bold text-3xl tracking-tight">
@@ -466,6 +490,9 @@ export default function AdminDashboard() {
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
+              <Button size="sm" onClick={() => setShowAddModal(true)}>
+                Add Person
+              </Button>
               <Button size="sm" variant="secondary" onClick={exportCSV}>
                 Export CSV
               </Button>
