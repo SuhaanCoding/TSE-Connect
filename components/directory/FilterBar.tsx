@@ -114,20 +114,38 @@ export default function FilterBar({
   years,
   companies,
 }: FilterBarProps) {
+  const STATUS_OPTIONS = ["Opted In", "Not Confirmed", "Opted Out"];
+  const STATUS_MAP: Record<string, string> = {
+    "Opted In": "opted_in",
+    "Not Confirmed": "not_confirmed",
+    "Opted Out": "opted_out",
+  };
+  const STATUS_REVERSE: Record<string, string> = {
+    "opted_in": "Opted In",
+    "not_confirmed": "Not Confirmed",
+    "opted_out": "Opted Out",
+  };
+
+  const selectedStatusLabels = filters.opt_statuses.map((s) => STATUS_REVERSE[s] || s);
+
   const hasFilters =
     filters.graduation_years.length > 0 ||
-    filters.companies.length > 0;
+    filters.companies.length > 0 ||
+    filters.opt_statuses.length > 0;
 
   const allTags = [
     ...filters.graduation_years.map((y) => ({ label: y, type: "year" as const })),
     ...filters.companies.map((c) => ({ label: c, type: "company" as const })),
+    ...filters.opt_statuses.map((s) => ({ label: STATUS_REVERSE[s] || s, type: "status" as const, value: s })),
   ];
 
-  const removeTag = (tag: { label: string; type: "year" | "company" }) => {
+  const removeTag = (tag: { label: string; type: "year" | "company" | "status"; value?: string }) => {
     if (tag.type === "year") {
       onFilterChange({ graduation_years: filters.graduation_years.filter((y) => y !== tag.label) });
-    } else {
+    } else if (tag.type === "company") {
       onFilterChange({ companies: filters.companies.filter((c) => c !== tag.label) });
+    } else {
+      onFilterChange({ opt_statuses: filters.opt_statuses.filter((s) => s !== tag.value) });
     }
   };
 
@@ -161,6 +179,15 @@ export default function FilterBar({
           <option value="past">Previously Worked</option>
         </select>
 
+        <MultiSelectDropdown
+          label="Status"
+          options={STATUS_OPTIONS}
+          selected={selectedStatusLabels}
+          onChange={(labels) =>
+            onFilterChange({ opt_statuses: labels.map((l) => STATUS_MAP[l] || l) })
+          }
+        />
+
         {hasFilters && (
           <button
             onClick={() =>
@@ -168,6 +195,7 @@ export default function FilterBar({
                 graduation_years: [],
                 companies: [],
                 company_match: "all" as const,
+                opt_statuses: [],
               })
             }
             className="text-xs text-text-muted hover:text-foreground transition-colors cursor-pointer py-2"

@@ -30,8 +30,10 @@ export async function GET(request: Request) {
   const years = searchParams.get("years") || "";
   const companies = searchParams.get("companies") || "";
   const companyMatch = searchParams.get("company_match") || "all"; // "all" | "current" | "past"
-  // opt_status filtering is admin-only to prevent privacy enumeration.
-  // Regular users cannot discover who opted in/out.
+  const optStatuses = searchParams.get("opt_statuses") || "";
+  const optStatusList = optStatuses
+    ? optStatuses.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
   const page = parseInt(searchParams.get("page") || "1", 10);
   const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "24", 10), 1), 100);
 
@@ -106,6 +108,12 @@ export async function GET(request: Request) {
         );
       }
 
+      if (optStatusList.length > 0) {
+        filtered = filtered.filter((a: Record<string, unknown>) =>
+          optStatusList.includes(a.opt_status as string)
+        );
+      }
+
       count = filtered.length;
       const from = (page - 1) * limit;
       data = filtered.slice(from, from + limit);
@@ -142,6 +150,12 @@ export async function GET(request: Request) {
       query = query.not("current_company", "is", null);
     } else if (companyMatch === "past") {
       query = query.not("past_companies", "eq", "{}");
+    }
+
+    if (optStatusList.length === 1) {
+      query = query.eq("opt_status", optStatusList[0]);
+    } else if (optStatusList.length > 1) {
+      query = query.in("opt_status", optStatusList);
     }
 
     const from = (page - 1) * limit;

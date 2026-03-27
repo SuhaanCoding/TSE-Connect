@@ -35,6 +35,7 @@ export default function DirectoryView({
     graduation_years: [],
     companies: [],
     company_match: "all",
+    opt_statuses: [],
   });
 
   const fetchAlumni = useCallback(async (currentFilters: AlumniFilters, currentPage: number) => {
@@ -48,6 +49,8 @@ export default function DirectoryView({
         params.set("companies", currentFilters.companies.join(","));
         params.set("company_match", currentFilters.company_match);
       }
+      if (currentFilters.opt_statuses.length > 0)
+        params.set("opt_statuses", currentFilters.opt_statuses.join(","));
 
       params.set("page", String(currentPage));
       params.set("limit", String(PAGE_LIMIT));
@@ -71,18 +74,25 @@ export default function DirectoryView({
   );
 
   useEffect(() => {
-    // Don't fetch if filters are at defaults — server data is already current
     const isDefault =
       !searchInput &&
       filters.graduation_years.length === 0 &&
       filters.companies.length === 0 &&
-      filters.company_match === "all";
+      filters.company_match === "all" &&
+      filters.opt_statuses.length === 0;
 
-    if (isDefault) return;
+    if (isDefault) {
+      // Reset to server-rendered initial data
+      setAlumni(initialAlumni);
+      setTotalCount(initialCount);
+      setMatchTerms([]);
+      setPage(1);
+      return;
+    }
 
     setPage(1);
     debouncedFetchRef.current({ ...filters, query: searchInput }, 1);
-  }, [searchInput, filters]);
+  }, [searchInput, filters, initialAlumni, initialCount]);
 
   const handlePageChange = useCallback((newPage: number) => {
     setPage(newPage);
