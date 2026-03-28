@@ -21,7 +21,7 @@ export default function Hero({ isSignedIn, isOnboarded }: HeroProps) {
   };
 
   return (
-    <section className="relative flex items-center justify-center overflow-hidden pt-16 pb-6 md:pt-20 md:pb-8">
+    <section className="relative flex items-center justify-center overflow-hidden pt-12 pb-4 md:pt-16 md:pb-6">
       {/* Dot grid background */}
       <div
         className="absolute inset-0 opacity-[0.03]"

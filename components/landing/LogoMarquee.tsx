@@ -1,39 +1,45 @@
 const ROW_1 = [
   "Google",
-  "Amazon",
-  "Meta",
-  "Apple",
-  "Microsoft",
+  "OpenAI",
+  "Jane Street",
   "Stripe",
-  "Palantir",
-  "ServiceNow",
-  "Intuit",
-  "Oracle",
-  "TikTok",
-  "Roblox",
+  "SpaceX",
+  "Meta",
+  "Citadel Securities",
+  "NVIDIA",
+  "Anduril",
+  "Apple",
+  "Hudson River Trading",
+  "Databricks",
 ];
 
 const ROW_2 = [
-  "Boeing",
-  "Visa",
-  "Tesla",
-  "SpaceX",
-  "Adobe",
-  "NVIDIA",
-  "Cloudflare",
-  "Coinbase",
-  "Jane Street",
-  "Snowflake",
-  "OpenAI",
   "Netflix",
-  "Capital One",
-  "LinkedIn",
+  "Neuralink",
+  "Ramp",
+  "Tesla",
+  "Coinbase",
+  "Together AI",
+  "Palantir",
+  "Figma",
   "Uber",
-  "Northrop Grumman",
-  "Anduril",
-  "DoorDash",
-  "Databricks",
+  "Scale AI",
+  "Bloomberg",
+  "Adobe",
+];
+
+const ROW_3 = [
+  "Cloudflare",
   "Snap",
+  "TikTok",
+  "Amazon",
+  "Robinhood",
+  "Snowflake",
+  "DoorDash",
+  "Microsoft",
+  "Roblox",
+  "Splunk",
+  "Walt Disney Imagineering",
 ];
 
 function MarqueeRow({
@@ -65,18 +71,19 @@ function MarqueeRow({
 
 export default function LogoMarquee() {
   return (
-    <section className="py-10 overflow-hidden border-y border-border">
-      <p className="text-center text-[11px] font-medium uppercase tracking-[0.25em] text-text-muted mb-8">
+    <section className="py-6 overflow-hidden border-y border-border">
+      <p className="text-center text-[11px] font-medium uppercase tracking-[0.25em] text-text-muted mb-5">
         Where TSE Alumni Work
       </p>
 
-      <div className="relative space-y-4">
+      <div className="relative space-y-3">
         {/* Fade edges */}
         <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none" />
         <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none" />
 
         <MarqueeRow companies={ROW_1} />
         <MarqueeRow companies={ROW_2} reverse />
+        <MarqueeRow companies={ROW_3} />
       </div>
     </section>
   );
