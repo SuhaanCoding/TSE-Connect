@@ -49,22 +49,35 @@ function MarqueeRow({
   companies: string[];
   reverse?: boolean;
 }) {
-  const doubled = [...companies, ...companies];
+  const items = companies.map((company, i) => (
+    <div
+      key={`${company}-${i}`}
+      className="flex-shrink-0 px-6 md:px-10 flex items-center"
+    >
+      <span className="text-base md:text-lg font-heading font-bold text-[rgba(250,250,248,0.6)] hover:text-[rgba(250,250,248,0.85)] transition-colors duration-300 whitespace-nowrap select-none">
+        {company}
+      </span>
+    </div>
+  ));
 
   return (
-    <div
-      className={`flex ${reverse ? "animate-marquee-reverse" : "animate-marquee"}`}
-    >
-      {doubled.map((company, i) => (
-        <div
-          key={`${company}-${i}`}
-          className="flex-shrink-0 px-6 md:px-10 flex items-center"
-        >
-          <span className="text-base md:text-lg font-heading font-bold text-[rgba(250,250,248,0.6)] hover:text-[rgba(250,250,248,0.85)] transition-colors duration-300 whitespace-nowrap select-none">
-            {company}
-          </span>
-        </div>
-      ))}
+    <div className="overflow-hidden">
+      <div
+        className={`flex w-max ${reverse ? "animate-marquee-reverse" : "animate-marquee"}`}
+        style={{ willChange: "transform", backfaceVisibility: "hidden" }}
+      >
+        {items}
+        {companies.map((company, i) => (
+          <div
+            key={`dup-${company}-${i}`}
+            className="flex-shrink-0 px-6 md:px-10 flex items-center"
+          >
+            <span className="text-base md:text-lg font-heading font-bold text-[rgba(250,250,248,0.6)] hover:text-[rgba(250,250,248,0.85)] transition-colors duration-300 whitespace-nowrap select-none">
+              {company}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
