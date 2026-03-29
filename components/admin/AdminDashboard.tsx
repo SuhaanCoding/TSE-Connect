@@ -33,13 +33,24 @@ export default function AdminDashboard() {
   const actionRef = useRef<HTMLTableCellElement>(null);
 
   // Scrape state
-  const [scrapeRunId, setScrapeRunId] = useState<string | null>(null);
-  const [scrapeDatasetId, setScrapeDatasetId] = useState<string | null>(null);
-  const [scrapeStatus, setScrapeStatus] = useState<string | null>(null);
-  const [scrapeProfileCount, setScrapeProfileCount] = useState<number>(0);
-  const [scrapeResult, setScrapeResult] = useState<ScrapeResult | null>(null);
+  interface ScrapeRun {
+    id: string;
+    started_at: string;
+    completed_at: string | null;
+    status: string;
+    trigger: string;
+    apify_run_id: string | null;
+    apify_dataset_id: string | null;
+    profile_count: number;
+    matched: number;
+    updated: number;
+    skipped_empty: number;
+    no_match: number;
+    errors: number;
+    error_message: string | null;
+  }
+  const [scrapeRuns, setScrapeRuns] = useState<ScrapeRun[]>([]);
   const [scraping, setScraping] = useState(false);
-  const [processing, setProcessing] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // CSV import state
@@ -370,12 +381,20 @@ export default function AdminDashboard() {
   };
 
   // Scrape functions
+  const fetchScrapeRuns = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/scrape");
+      const data = await res.json();
+      if (res.ok) {
+        setScrapeRuns(data.runs || []);
+      }
+    } catch {
+      // Silently fail — not critical
+    }
+  }, []);
+
   const startScrape = async () => {
     setScraping(true);
-    setScrapeResult(null);
-    setScrapeStatus(null);
-    setScrapeDatasetId(null);
-
     try {
       const res = await fetch("/api/admin/scrape", { method: "POST" });
       const data = await res.json();
@@ -386,77 +405,41 @@ export default function AdminDashboard() {
         return;
       }
 
-      setScrapeRunId(data.runId);
-      setScrapeDatasetId(data.datasetId);
-      setScrapeProfileCount(data.profileCount);
-      setScrapeStatus("RUNNING");
+      setToast(`Scrape started — ${data.profileCount} profiles. Results will process automatically.`);
+      await fetchScrapeRuns();
 
-      // Start polling for status
+      // Poll scrape_runs table for status updates while a run is active
       pollRef.current = setInterval(async () => {
-        try {
-          const statusRes = await fetch(`/api/admin/scrape?runId=${data.runId}`);
-          const statusData = await statusRes.json();
-          setScrapeStatus(statusData.status);
-
-          if (statusData.datasetId) {
-            setScrapeDatasetId(statusData.datasetId);
-          }
-
-          if (statusData.status !== "RUNNING" && statusData.status !== "READY") {
-            if (pollRef.current) clearInterval(pollRef.current);
-            pollRef.current = null;
-            setScraping(false);
-
-            if (statusData.status !== "SUCCEEDED") {
-              setToast(`Scrape ended with status: ${statusData.status}`);
-            }
-          }
-        } catch {
-          // Keep polling on transient errors
-        }
-      }, 5000);
+        await fetchScrapeRuns();
+      }, 15000);
     } catch {
       setToast("Failed to start scrape");
+    } finally {
       setScraping(false);
     }
   };
 
-  const processResults = async () => {
-    if (!scrapeDatasetId) return;
-
-    setProcessing(true);
-    try {
-      const res = await fetch("/api/admin/scrape", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ datasetId: scrapeDatasetId }),
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        setScrapeResult(data);
-        setToast(`Updated ${data.updated} alumni from LinkedIn`);
-        fetchData();
-      } else {
-        setToast(data.error || "Failed to process results");
-      }
-    } catch {
-      setToast("Failed to process scrape results");
-    } finally {
-      setProcessing(false);
+  // Stop polling when no runs are active
+  useEffect(() => {
+    const hasRunning = scrapeRuns.some((r) => r.status === "running");
+    if (!hasRunning && pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
-  };
+  }, [scrapeRuns]);
 
-  const resetScrape = () => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = null;
-    setScrapeRunId(null);
-    setScrapeDatasetId(null);
-    setScrapeStatus(null);
-    setScrapeResult(null);
-    setScraping(false);
-    setProcessing(false);
-  };
+  // Fetch scrape history when tab is selected
+  useEffect(() => {
+    if (tab === "scrape") {
+      fetchScrapeRuns();
+    }
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [tab, fetchScrapeRuns]);
 
   // Admin management
   const addAdmin = async () => {
@@ -740,11 +723,14 @@ export default function AdminDashboard() {
 
         {/* SCRAPE TAB */}
         {tab === "scrape" && (
-          <div className="space-y-6 max-w-lg">
-            <div>
+          <div className="space-y-6">
+            <div className="max-w-lg">
               <h2 className="font-heading font-semibold text-lg mb-2">LinkedIn Scrape</h2>
               <p className="text-sm text-text-muted mb-1">
-                Scrape LinkedIn profiles for all alumni with LinkedIn URLs. Career data (role, company, past companies) will be updated automatically.
+                Scrape LinkedIn profiles for all alumni with LinkedIn URLs. Career data (role, company, past companies) will be updated automatically via webhook — you can close this tab safely.
+              </p>
+              <p className="text-sm text-text-muted mb-1">
+                A scheduled scrape runs automatically on the <span className="text-accent font-medium">15th of every month</span>.
               </p>
               <p className="text-sm text-text-muted mb-4">
                 <span className="text-accent font-medium">{linkedinCount}</span> alumni with LinkedIn URLs.
@@ -752,87 +738,104 @@ export default function AdminDashboard() {
                   <span className="text-text-muted/60"> Estimated cost: ~${((linkedinCount / 1000) * 4).toFixed(2)}</span>
                 )}
               </p>
-            </div>
 
-            {/* Stage 1: Idle — no active run */}
-            {!scrapeRunId && !scrapeResult && (
-              <Button onClick={startScrape} loading={scraping} disabled={linkedinCount === 0}>
-                Start LinkedIn Scrape
-              </Button>
-            )}
-
-            {/* Stage 2: Running — polling for status */}
-            {scrapeRunId && scrapeStatus && scrapeStatus !== "SUCCEEDED" && !scrapeResult && (
-              <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-3 w-3 rounded-full bg-accent animate-pulse" />
-                  <span className="text-sm font-medium">Scraping {scrapeProfileCount} profiles...</span>
-                </div>
-                <p className="text-xs text-text-muted">
-                  Status: <span className="text-text-secondary font-medium">{scrapeStatus}</span>
-                  {" "}— Checking every 5 seconds
-                </p>
-                <p className="text-xs text-text-muted/60">
-                  Run ID: {scrapeRunId}
-                </p>
-              </div>
-            )}
-
-            {/* Stage 3: Succeeded — ready to process */}
-            {scrapeStatus === "SUCCEEDED" && !scrapeResult && (
-              <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="h-3 w-3 rounded-full bg-emerald-400" />
-                  <span className="text-sm font-medium">Scrape complete!</span>
-                </div>
-                <p className="text-sm text-text-muted">
-                  {scrapeProfileCount} profiles scraped. Ready to process results and update the database.
-                </p>
-                <div className="flex gap-2">
-                  <Button onClick={processResults} loading={processing}>
-                    {processing ? "Processing..." : "Process Results"}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={resetScrape}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Stage 4: Results displayed */}
-            {scrapeResult && (
-              <div className="bg-surface border border-border rounded-lg p-4 space-y-3">
-                <h3 className="font-medium text-sm">Scrape Results</h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-text-muted">Matched:</span>{" "}
-                    <span className="text-emerald-400 font-medium">{scrapeResult.matched}</span>
-                  </div>
-                  <div>
-                    <span className="text-text-muted">Updated:</span>{" "}
-                    <span className="text-accent font-medium">{scrapeResult.updated}</span>
-                  </div>
-                  <div>
-                    <span className="text-text-muted">Skipped (empty data):</span>{" "}
-                    <span className="text-text-secondary">{scrapeResult.skippedEmpty}</span>
-                  </div>
-                  <div>
-                    <span className="text-text-muted">No match:</span>{" "}
-                    <span className="text-text-secondary">{scrapeResult.noMatch}</span>
-                  </div>
-                  <div>
-                    <span className="text-text-muted">Errors:</span>{" "}
-                    <span className={scrapeResult.errors > 0 ? "text-red-400 font-medium" : "text-text-secondary"}>
-                      {scrapeResult.errors}
-                    </span>
-                  </div>
-                </div>
-                <Button variant="secondary" size="sm" onClick={resetScrape}>
-                  Start New Scrape
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={startScrape}
+                  loading={scraping}
+                  disabled={linkedinCount === 0 || scrapeRuns.some((r) => r.status === "running")}
+                >
+                  {scrapeRuns.some((r) => r.status === "running") ? "Scrape In Progress..." : "Start LinkedIn Scrape"}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={fetchScrapeRuns}>
+                  Refresh
                 </Button>
               </div>
+            </div>
+
+            {/* Scrape Run History */}
+            {scrapeRuns.length > 0 && (
+              <div>
+                <h3 className="font-heading font-semibold text-sm mb-3">Scrape History</h3>
+                <div className="overflow-x-auto border border-border rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-surface">
+                        <th className="text-left px-3 py-2 font-medium text-text-muted">Date</th>
+                        <th className="text-left px-3 py-2 font-medium text-text-muted">Trigger</th>
+                        <th className="text-left px-3 py-2 font-medium text-text-muted">Status</th>
+                        <th className="text-right px-3 py-2 font-medium text-text-muted">Profiles</th>
+                        <th className="text-right px-3 py-2 font-medium text-text-muted">Matched</th>
+                        <th className="text-right px-3 py-2 font-medium text-text-muted">Updated</th>
+                        <th className="text-right px-3 py-2 font-medium text-text-muted">Errors</th>
+                        <th className="text-left px-3 py-2 font-medium text-text-muted">Duration</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scrapeRuns.map((run) => {
+                        const started = new Date(run.started_at);
+                        const completed = run.completed_at ? new Date(run.completed_at) : null;
+                        const durationMs = completed ? completed.getTime() - started.getTime() : null;
+                        const durationStr = durationMs
+                          ? durationMs < 60000
+                            ? `${Math.round(durationMs / 1000)}s`
+                            : `${Math.round(durationMs / 60000)}m`
+                          : "—";
+
+                        return (
+                          <tr key={run.id} className="border-b border-border last:border-b-0 hover:bg-surface-hover transition-colors">
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {started.toLocaleDateString()} {started.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                run.trigger === "scheduled"
+                                  ? "bg-accent/15 text-accent-light"
+                                  : "bg-white/10 text-text-secondary"
+                              }`}>
+                                {run.trigger}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                                run.status === "completed"
+                                  ? "text-emerald-400"
+                                  : run.status === "running"
+                                    ? "text-accent"
+                                    : "text-red-400"
+                              }`}>
+                                {run.status === "running" && (
+                                  <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
+                                )}
+                                {run.status}
+                              </span>
+                              {run.error_message && (
+                                <p className="text-[10px] text-red-400/70 mt-0.5 max-w-[200px] truncate" title={run.error_message}>
+                                  {run.error_message}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right text-text-secondary">{run.profile_count}</td>
+                            <td className="px-3 py-2 text-right text-emerald-400">{run.matched || "—"}</td>
+                            <td className="px-3 py-2 text-right text-accent">{run.updated || "—"}</td>
+                            <td className="px-3 py-2 text-right">
+                              <span className={run.errors > 0 ? "text-red-400 font-medium" : "text-text-secondary"}>
+                                {run.errors || "—"}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-text-muted">{durationStr}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
 
+            {scrapeRuns.length === 0 && (
+              <p className="text-sm text-text-muted">No scrape runs yet.</p>
+            )}
           </div>
         )}
 

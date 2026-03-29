@@ -3,12 +3,10 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/admin";
 import {
   startScrapeRun,
-  getRunStatus,
-  getRunResults,
   normalizeLinkedInUrl,
-  extractProfileUrl,
+  registerWebhook,
 } from "@/lib/apify";
-import type { ScrapeResult } from "@/lib/types";
+import { processApifyResults } from "@/lib/scrape";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -22,9 +20,15 @@ async function requireAdmin() {
   return user;
 }
 
+function getAppUrl(): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+}
+
 /**
  * POST /api/admin/scrape — Start an Apify LinkedIn scrape run.
- * Reads all LinkedIn URLs from Supabase, sends them to Apify.
+ * Creates a scrape_runs record and registers an Apify webhook for auto-processing.
  */
 export async function POST() {
   const user = await requireAdmin();
@@ -48,7 +52,7 @@ export async function POST() {
     );
   }
 
-  // Deduplicate URLs (different alumni might have same URL due to data issues)
+  // Deduplicate URLs
   const urlSet = new Set<string>();
   const urls: string[] = [];
   for (const a of alumniWithLinkedin || []) {
@@ -69,10 +73,40 @@ export async function POST() {
 
   try {
     const { runId, datasetId } = await startScrapeRun(urls);
+
+    // Insert scrape_runs record
+    const { data: scrapeRun, error: insertError } = await serviceClient
+      .from("scrape_runs")
+      .insert({
+        status: "running",
+        trigger: "manual",
+        apify_run_id: runId,
+        apify_dataset_id: datasetId,
+        profile_count: urls.length,
+      })
+      .select("id")
+      .single();
+
+    if (insertError) {
+      console.error("Failed to insert scrape_runs:", insertError.message);
+    }
+
+    // Register Apify webhook for auto-processing
+    const webhookSecret = process.env.APIFY_WEBHOOK_SECRET;
+    if (webhookSecret && scrapeRun) {
+      const appUrl = getAppUrl();
+      await registerWebhook(
+        runId,
+        `${appUrl}/api/admin/scrape/webhook`,
+        webhookSecret
+      );
+    }
+
     return NextResponse.json({
       runId,
       datasetId,
       profileCount: urls.length,
+      scrapeRunId: scrapeRun?.id || null,
     });
   } catch (err) {
     console.error("Apify start error:", err);
@@ -84,7 +118,10 @@ export async function POST() {
 }
 
 /**
- * GET /api/admin/scrape?runId=xxx — Check status of an Apify run.
+ * GET /api/admin/scrape — Get scrape run history, or check a specific run.
+ * Query params:
+ *   ?runId=xxx — check specific run status from scrape_runs table
+ *   (no params) — return recent scrape run history
  */
 export async function GET(request: Request) {
   const user = await requireAdmin();
@@ -92,32 +129,43 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
+  const serviceClient = await createServiceClient();
   const { searchParams } = new URL(request.url);
   const runId = searchParams.get("runId");
 
-  if (!runId) {
-    return NextResponse.json({ error: "runId is required" }, { status: 400 });
-  }
+  if (runId) {
+    // Check specific run
+    const { data, error } = await serviceClient
+      .from("scrape_runs")
+      .select("*")
+      .eq("id", runId)
+      .maybeSingle();
 
-  try {
-    const { status, datasetId } = await getRunStatus(runId);
-    return NextResponse.json({ runId, status, datasetId });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    if (message.includes("not found")) {
+    if (error || !data) {
       return NextResponse.json({ error: "Run not found" }, { status: 404 });
     }
-    console.error("Apify status check error:", err);
-    return NextResponse.json(
-      { error: "Failed to check scrape status" },
-      { status: 502 }
-    );
+
+    return NextResponse.json(data);
   }
+
+  // Return recent history
+  const { data: runs, error } = await serviceClient
+    .from("scrape_runs")
+    .select("*")
+    .order("started_at", { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.error("Failed to fetch scrape runs:", error.message);
+    return NextResponse.json({ error: "Failed to fetch history" }, { status: 500 });
+  }
+
+  return NextResponse.json({ runs: runs || [] });
 }
 
 /**
- * PUT /api/admin/scrape — Process completed Apify results and update Supabase.
- * Body: { datasetId }
+ * PUT /api/admin/scrape — Manual fallback to process results.
+ * Body: { datasetId, scrapeRunId? }
  */
 export async function PUT(request: Request) {
   const user = await requireAdmin();
@@ -126,7 +174,7 @@ export async function PUT(request: Request) {
   }
 
   const body = await request.json();
-  const { datasetId } = body;
+  const { datasetId, scrapeRunId } = body;
 
   if (!datasetId) {
     return NextResponse.json(
@@ -135,147 +183,31 @@ export async function PUT(request: Request) {
     );
   }
 
-  const serviceClient = await createServiceClient();
-
-  // Fetch Apify results
-  let profiles;
-  try {
-    profiles = await getRunResults(datasetId);
-  } catch (err) {
-    console.error("Apify results fetch error:", err);
-    return NextResponse.json(
-      { error: "Failed to fetch scrape results" },
-      { status: 502 }
-    );
+  // If no scrapeRunId provided, create one for tracking
+  let runId = scrapeRunId;
+  if (!runId) {
+    const serviceClient = await createServiceClient();
+    const { data } = await serviceClient
+      .from("scrape_runs")
+      .insert({
+        status: "running",
+        trigger: "manual",
+        apify_dataset_id: datasetId,
+      })
+      .select("id")
+      .single();
+    runId = data?.id;
   }
 
-  // Fetch all alumni with LinkedIn URLs from Supabase
-  const { data: allAlumni, error: fetchError } = await serviceClient
-    .from("alumni")
-    .select("id, linkedin_url, current_role, current_company, past_companies")
-    .not("linkedin_url", "is", null);
-
-  if (fetchError) {
-    console.error("Failed to fetch alumni:", fetchError.message);
+  try {
+    const result = await processApifyResults(datasetId, runId);
+    return NextResponse.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("Process results error:", message);
     return NextResponse.json(
-      { error: "Failed to fetch alumni data" },
+      { error: "Failed to process results" },
       { status: 500 }
     );
   }
-
-  // Build lookup map: normalized LinkedIn URL → alumni record
-  const urlToAlumni = new Map<
-    string,
-    { id: string; current_role: string | null; current_company: string | null; past_companies: string[] }
-  >();
-  for (const a of allAlumni || []) {
-    if (!a.linkedin_url) continue;
-    const normalized = normalizeLinkedInUrl(a.linkedin_url);
-    urlToAlumni.set(normalized, {
-      id: a.id,
-      current_role: a.current_role,
-      current_company: a.current_company,
-      past_companies: a.past_companies || [],
-    });
-  }
-
-  // Process each profile result
-  const result: ScrapeResult = {
-    matched: 0,
-    updated: 0,
-    skippedEmpty: 0,
-    noMatch: 0,
-    errors: 0,
-  };
-
-  const BATCH_SIZE = 50;
-  const updates: Array<{ id: string; data: Record<string, unknown> }> = [];
-
-  for (const profile of profiles) {
-    const profileUrl = extractProfileUrl(profile);
-    if (!profileUrl) {
-      result.noMatch++;
-      continue;
-    }
-
-    const normalized = normalizeLinkedInUrl(profileUrl);
-    const alumni = urlToAlumni.get(normalized);
-
-    if (!alumni) {
-      result.noMatch++;
-      continue;
-    }
-
-    result.matched++;
-
-    // Extract career data from experience
-    const experience = profile.experience || [];
-    const currentRole = experience[0]?.position?.trim() || "";
-    const currentCompany = experience[0]?.companyName?.trim() || "";
-
-    // Deduplicate past companies, excluding current company
-    const seen = new Set<string>();
-    if (currentCompany) seen.add(currentCompany.toLowerCase());
-    const pastCompanies: string[] = [];
-    for (let i = 1; i < experience.length; i++) {
-      const company = experience[i]?.companyName?.trim();
-      if (company && !seen.has(company.toLowerCase())) {
-        seen.add(company.toLowerCase());
-        pastCompanies.push(company);
-      }
-    }
-
-    // Build update — only set fields that have real data (never overwrite with empty)
-    const updateData: Record<string, unknown> = {
-      last_scraped_at: new Date().toISOString(),
-    };
-
-    let hasCareerUpdate = false;
-
-    if (currentRole && currentRole.toLowerCase() !== "none") {
-      updateData.current_role = currentRole;
-      hasCareerUpdate = true;
-    }
-    if (currentCompany && currentCompany.toLowerCase() !== "none") {
-      updateData.current_company = currentCompany;
-      hasCareerUpdate = true;
-    }
-    if (pastCompanies.length > 0) {
-      updateData.past_companies = pastCompanies.slice(0, 20);
-      hasCareerUpdate = true;
-    }
-
-    if (!hasCareerUpdate) {
-      result.skippedEmpty++;
-    }
-
-    updates.push({ id: alumni.id, data: updateData });
-  }
-
-  // Batch update in groups of 50
-  let errorCount = 0;
-  for (let i = 0; i < updates.length; i += BATCH_SIZE) {
-    const batch = updates.slice(i, i + BATCH_SIZE);
-    const results = await Promise.all(
-      batch.map(({ id, data }) =>
-        serviceClient.from("alumni").update(data).eq("id", id)
-      )
-    );
-    for (let j = 0; j < results.length; j++) {
-      if (results[j].error) {
-        errorCount++;
-        if (errorCount <= 3) {
-          console.error(
-            `Scrape update failed for ${batch[j].id}:`,
-            results[j].error!.message
-          );
-        }
-      } else {
-        result.updated++;
-      }
-    }
-  }
-  result.errors = errorCount;
-
-  return NextResponse.json(result);
 }

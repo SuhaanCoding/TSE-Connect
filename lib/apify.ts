@@ -122,3 +122,40 @@ export function extractProfileUrl(
   const raw = profile.url || profile.profileUrl || profile.linkedInUrl;
   return raw?.trim() || null;
 }
+
+/**
+ * Register a webhook on an Apify run so it calls back when complete.
+ * The webhook includes our secret for verification.
+ */
+export async function registerWebhook(
+  runId: string,
+  webhookUrl: string,
+  secret: string
+): Promise<void> {
+  const token = getToken();
+
+  const response = await fetch(
+    `${APIFY_BASE}/webhooks?token=${token}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
+        condition: { actorRunId: runId },
+        requestUrl: webhookUrl,
+        payloadTemplate: JSON.stringify({
+          runId: "{{resource.id}}",
+          datasetId: "{{resource.defaultDatasetId}}",
+          status: "{{resource.status}}",
+          secret,
+        }),
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    console.error(`Failed to register Apify webhook (${response.status}): ${text}`);
+    // Non-fatal — the scrape still works, just won't auto-process
+  }
+}
