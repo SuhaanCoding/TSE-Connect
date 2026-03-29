@@ -105,6 +105,21 @@ const AlumniCard = memo(function AlumniCard({
             </Badge>
           )}
         </div>
+
+        {alumni.past_companies && alumni.past_companies.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {alumni.past_companies.slice(0, 3).map((company: string) => (
+              <Badge key={company} variant="neutral" className="text-[10px] px-1.5 py-0.5">
+                {company}
+              </Badge>
+            ))}
+            {alumni.past_companies.length > 3 && (
+              <span className="text-[10px] text-text-muted self-center">
+                +{alumni.past_companies.length - 3} more
+              </span>
+            )}
+          </div>
+        )}
       </Link>
 
       <div className="mt-3 pt-3 border-t border-border">
