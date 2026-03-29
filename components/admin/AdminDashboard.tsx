@@ -393,10 +393,14 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  const startScrape = async () => {
+  const startScrape = async (test = false) => {
     setScraping(true);
     try {
-      const res = await fetch("/api/admin/scrape", { method: "POST" });
+      const res = await fetch("/api/admin/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ test }),
+      });
       const data = await res.json();
 
       if (!res.ok) {
@@ -405,7 +409,7 @@ export default function AdminDashboard() {
         return;
       }
 
-      setToast(`Scrape started — ${data.profileCount} profiles. Results will process automatically.`);
+      setToast(`${test ? "Test scrape" : "Scrape"} started — ${data.profileCount} profiles. Results will process automatically.`);
       await fetchScrapeRuns();
 
       // Poll scrape_runs table for status updates while a run is active
@@ -741,11 +745,19 @@ export default function AdminDashboard() {
 
               <div className="flex items-center gap-3">
                 <Button
-                  onClick={startScrape}
+                  onClick={() => startScrape(false)}
                   loading={scraping}
                   disabled={linkedinCount === 0 || scrapeRuns.some((r) => r.status === "running")}
                 >
-                  {scrapeRuns.some((r) => r.status === "running") ? "Scrape In Progress..." : "Start LinkedIn Scrape"}
+                  {scrapeRuns.some((r) => r.status === "running") ? "Scrape In Progress..." : "Start Full Scrape"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => startScrape(true)}
+                  disabled={linkedinCount === 0 || scraping || scrapeRuns.some((r) => r.status === "running")}
+                >
+                  Test Scrape (Ben + Eshaan)
                 </Button>
                 <Button variant="ghost" size="sm" onClick={fetchScrapeRuns}>
                   Refresh

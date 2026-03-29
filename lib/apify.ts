@@ -119,7 +119,7 @@ export async function getRunResults(
 export function extractProfileUrl(
   profile: ApifyLinkedInProfile
 ): string | null {
-  const raw = profile.url || profile.profileUrl || profile.linkedInUrl;
+  const raw = profile.url || profile.profileUrl || profile.linkedInUrl || profile.linkedinUrl;
   return raw?.trim() || null;
 }
 

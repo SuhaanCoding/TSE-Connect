@@ -3,6 +3,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/admin";
 import {
   startScrapeRun,
+  getRunStatus,
   normalizeLinkedInUrl,
   registerWebhook,
 } from "@/lib/apify";
@@ -28,12 +29,20 @@ function getAppUrl(): string {
 
 /**
  * POST /api/admin/scrape — Start an Apify LinkedIn scrape run.
- * Creates a scrape_runs record and registers an Apify webhook for auto-processing.
+ * Body: { test?: boolean } — if test is true, only scrape 5 random profiles.
  */
-export async function POST() {
+export async function POST(request: Request) {
   const user = await requireAdmin();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  }
+
+  let test = false;
+  try {
+    const body = await request.json();
+    test = !!body.test;
+  } catch {
+    // No body is fine — defaults to full scrape
   }
 
   const serviceClient = await createServiceClient();
@@ -41,7 +50,7 @@ export async function POST() {
   // Fetch all alumni with LinkedIn URLs
   const { data: alumniWithLinkedin, error: fetchError } = await serviceClient
     .from("alumni")
-    .select("id, linkedin_url")
+    .select("id, full_name, linkedin_url")
     .not("linkedin_url", "is", null);
 
   if (fetchError) {
@@ -71,18 +80,34 @@ export async function POST() {
     );
   }
 
+  // Test mode: scrape specific test profiles
+  let finalUrls = urls;
+  if (test) {
+    const testNames = ["benjamin johnson", "eshaan sharma"];
+    const testUrls = (alumniWithLinkedin || [])
+      .filter((a) => {
+        const name = a.full_name?.toLowerCase() || "";
+        return testNames.some((t) => name.includes(t));
+      })
+      .map((a) => a.linkedin_url!.trim())
+      .filter(Boolean);
+    finalUrls = testUrls.length > 0 ? testUrls : urls.slice(0, 2);
+  }
+
+  const trigger = test ? "manual_test" : "manual";
+
   try {
-    const { runId, datasetId } = await startScrapeRun(urls);
+    const { runId, datasetId } = await startScrapeRun(finalUrls);
 
     // Insert scrape_runs record
     const { data: scrapeRun, error: insertError } = await serviceClient
       .from("scrape_runs")
       .insert({
         status: "running",
-        trigger: "manual",
+        trigger,
         apify_run_id: runId,
         apify_dataset_id: datasetId,
-        profile_count: urls.length,
+        profile_count: finalUrls.length,
       })
       .select("id")
       .single();
@@ -105,8 +130,9 @@ export async function POST() {
     return NextResponse.json({
       runId,
       datasetId,
-      profileCount: urls.length,
+      profileCount: finalUrls.length,
       scrapeRunId: scrapeRun?.id || null,
+      test,
     });
   } catch (err) {
     console.error("Apify start error:", err);
@@ -118,10 +144,8 @@ export async function POST() {
 }
 
 /**
- * GET /api/admin/scrape — Get scrape run history, or check a specific run.
- * Query params:
- *   ?runId=xxx — check specific run status from scrape_runs table
- *   (no params) — return recent scrape run history
+ * GET /api/admin/scrape — Get scrape run history.
+ * Also catches up any "running" runs by checking Apify's actual status.
  */
 export async function GET(request: Request) {
   const user = await requireAdmin();
@@ -134,7 +158,6 @@ export async function GET(request: Request) {
   const runId = searchParams.get("runId");
 
   if (runId) {
-    // Check specific run
     const { data, error } = await serviceClient
       .from("scrape_runs")
       .select("*")
@@ -160,6 +183,58 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Failed to fetch history" }, { status: 500 });
   }
 
+  // Catch-up: check any "running" runs against Apify's actual status
+  const runningRuns = (runs || []).filter(
+    (r) => r.status === "running" && r.apify_run_id
+  );
+
+  for (const run of runningRuns) {
+    try {
+      const { status: apifyStatus } = await getRunStatus(run.apify_run_id);
+
+      if (apifyStatus === "SUCCEEDED" && run.apify_dataset_id) {
+        // Apify finished — process results now
+        try {
+          await processApifyResults(run.apify_dataset_id, run.id);
+          // Re-fetch the updated run
+          const { data: updated } = await serviceClient
+            .from("scrape_runs")
+            .select("*")
+            .eq("id", run.id)
+            .single();
+          if (updated) {
+            const idx = runs!.findIndex((r) => r.id === run.id);
+            if (idx !== -1) runs![idx] = updated;
+          }
+        } catch (err) {
+          console.error(`Catch-up processing failed for run ${run.id}:`, err);
+        }
+      } else if (
+        apifyStatus === "FAILED" ||
+        apifyStatus === "ABORTED" ||
+        apifyStatus === "TIMED-OUT"
+      ) {
+        // Mark as failed
+        await serviceClient
+          .from("scrape_runs")
+          .update({
+            status: "failed",
+            completed_at: new Date().toISOString(),
+            error_message: `Apify run ${apifyStatus}`,
+          })
+          .eq("id", run.id);
+
+        const idx = runs!.findIndex((r) => r.id === run.id);
+        if (idx !== -1) {
+          runs![idx] = { ...runs![idx], status: "failed", error_message: `Apify run ${apifyStatus}` };
+        }
+      }
+      // If still RUNNING/READY on Apify's side, leave as-is
+    } catch (err) {
+      console.error(`Failed to check Apify status for run ${run.apify_run_id}:`, err);
+    }
+  }
+
   return NextResponse.json({ runs: runs || [] });
 }
 
@@ -183,7 +258,6 @@ export async function PUT(request: Request) {
     );
   }
 
-  // If no scrapeRunId provided, create one for tracking
   let runId = scrapeRunId;
   if (!runId) {
     const serviceClient = await createServiceClient();

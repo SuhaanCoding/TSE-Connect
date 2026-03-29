@@ -27,6 +27,7 @@ export interface ApifyLinkedInProfile {
   url?: string;
   profileUrl?: string;
   linkedInUrl?: string;
+  linkedinUrl?: string;
   firstName?: string;
   lastName?: string;
   experience?: Array<{
