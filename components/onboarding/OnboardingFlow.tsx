@@ -16,6 +16,7 @@ interface OnboardingFormData {
   graduation_year: string;
   current_role: string;
   current_company: string;
+  past_companies: string[];
   linkedin_url: string;
   contact_email: string;
   preferred_contact: ContactPreference;
@@ -47,6 +48,7 @@ export default function OnboardingFlow({
     graduation_year: alumni?.graduation_year || "",
     current_role: alumni?.current_role || "",
     current_company: alumni?.current_company || "",
+    past_companies: alumni?.past_companies || [],
     linkedin_url: alumni?.linkedin_url || "",
     contact_email: alumni?.contact_email || loginEmail || "",
     preferred_contact: alumni?.preferred_contact || "linkedin",
@@ -85,6 +87,7 @@ export default function OnboardingFlow({
         graduation_year: data.graduation_year || prev.graduation_year,
         current_role: data.current_role || prev.current_role,
         current_company: data.current_company || prev.current_company,
+        past_companies: data.past_companies?.length ? data.past_companies : prev.past_companies,
         linkedin_url: data.linkedin_url || prev.linkedin_url,
         contact_email: data.contact_email || loginEmail || prev.contact_email,
       }));
