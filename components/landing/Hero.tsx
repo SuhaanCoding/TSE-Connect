@@ -91,9 +91,6 @@ export default function Hero({ isSignedIn, isOnboarded, authError }: HeroProps) 
               >
                 Already a member? Sign in
               </button>
-              <p className="text-xs text-text-muted mt-1">
-                Use a personal Google account — UCSD emails expire after graduation.
-              </p>
             </>
           )}
 

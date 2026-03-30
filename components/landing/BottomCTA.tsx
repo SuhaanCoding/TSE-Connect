@@ -41,18 +41,13 @@ export default function BottomCTA({ isSignedIn, isOnboarded }: BottomCTAProps) {
             </Link>
           )
         ) : (
-          <>
-            <Button
-              size="lg"
-              onClick={handleSignIn}
-              className="rounded-full px-10"
-            >
-              Join the Network
-            </Button>
-            <p className="text-xs text-text-muted mt-3">
-              Use a personal Google account — UCSD emails expire after graduation.
-            </p>
-          </>
+          <Button
+            size="lg"
+            onClick={handleSignIn}
+            className="rounded-full px-10"
+          >
+            Join the Network
+          </Button>
         )}
       </div>
     </section>

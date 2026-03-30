@@ -73,7 +73,12 @@ export default async function Navbar() {
             </div>
           </>
         ) : (
-          <SignInButton />
+          <div className="flex items-center gap-3">
+            <span className="hidden sm:inline text-xs text-text-muted">
+              Use a personal Google account — UCSD emails expire after graduation.
+            </span>
+            <SignInButton />
+          </div>
         )}
       </div>
     </nav>
