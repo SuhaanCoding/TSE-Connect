@@ -19,6 +19,16 @@ export function getAvatarColor(name: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
+export function isUcsdEmail(email: string): boolean {
+  const lower = email.trim().toLowerCase();
+  return lower.endsWith("@ucsd.edu") || lower.includes("@") && lower.split("@")[1].endsWith(".ucsd.edu");
+}
+
+export function isValidEmail(email: string): boolean {
+  if (!email) return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export function cn(
   ...classes: (string | undefined | false | null)[]
 ): string {

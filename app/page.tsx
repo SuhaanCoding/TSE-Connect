@@ -8,7 +8,12 @@ import HowItWorks from "@/components/landing/HowItWorks";
 import BottomCTA from "@/components/landing/BottomCTA";
 import { getCachedUser, getCachedAlumniProfile } from "@/lib/supabase/cached";
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
   const user = await getCachedUser();
 
   let isOnboarded = false;
@@ -26,7 +31,7 @@ export default async function Home() {
     <>
       <Navbar />
       <main className="pt-14">
-        <Hero isSignedIn={!!user} isOnboarded={isOnboarded} />
+        <Hero isSignedIn={!!user} isOnboarded={isOnboarded} authError={error} />
         <LogoMarquee />
         <Stats />
         <HowItWorks />

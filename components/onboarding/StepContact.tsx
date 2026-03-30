@@ -1,6 +1,7 @@
 "use client";
 
 import Input from "@/components/ui/Input";
+import { isValidEmail, isUcsdEmail } from "@/lib/utils";
 
 interface StepContactProps {
   data: {
@@ -16,11 +17,6 @@ function isValidUrl(url: string): boolean {
   return /^https?:\/\/.+/i.test(url) || /^[\w.-]+\.[\w.-]+/i.test(url);
 }
 
-function isValidEmail(email: string): boolean {
-  if (!email) return true;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
 export default function StepContact({
   data,
   onChange,
@@ -32,6 +28,8 @@ export default function StepContact({
 
   const emailError = data.contact_email && !isValidEmail(data.contact_email)
     ? "Please enter a valid email address"
+    : data.contact_email && isUcsdEmail(data.contact_email)
+    ? "UCSD emails expire after graduation. Please use a personal email."
     : undefined;
 
   return (
@@ -65,12 +63,9 @@ export default function StepContact({
             placeholder="you@example.com"
             error={emailError}
           />
-          {data.contact_email === loginEmail && (
-            <p className="mt-1 text-xs text-text-muted">
-              This defaults to your Google login email. Change it if you prefer
-              to be reached at a different address.
-            </p>
-          )}
+          <p className="mt-1 text-xs text-text-muted">
+            Use a personal email — UCSD emails expire after graduation.
+          </p>
         </div>
       </div>
     </div>

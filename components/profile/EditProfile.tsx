@@ -18,10 +18,7 @@ interface EditProfileProps {
   alumni: Alumni;
 }
 
-function isValidEmail(email: string): boolean {
-  if (!email) return true;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
+import { isValidEmail, isUcsdEmail } from "@/lib/utils";
 
 function isValidUrl(url: string): boolean {
   if (!url) return true;
@@ -97,6 +94,10 @@ export default function EditProfile({ alumni }: EditProfileProps) {
     }
     if (formData.contact_email && !isValidEmail(formData.contact_email)) {
       setToast({ message: "Please enter a valid email address", type: "error" });
+      return;
+    }
+    if (formData.contact_email && isUcsdEmail(formData.contact_email)) {
+      setToast({ message: "UCSD emails expire after graduation. Please use a personal email.", type: "error" });
       return;
     }
 
@@ -201,14 +202,25 @@ export default function EditProfile({ alumni }: EditProfileProps) {
             onChange={(e) => handleChange("linkedin_url", e.target.value)}
             error={formData.linkedin_url && !isValidUrl(formData.linkedin_url) ? "Invalid URL" : undefined}
           />
-          <Input
-            id="contact_email"
-            label="Contact Email"
-            type="email"
-            value={formData.contact_email}
-            onChange={(e) => handleChange("contact_email", e.target.value)}
-            error={formData.contact_email && !isValidEmail(formData.contact_email) ? "Invalid email" : undefined}
-          />
+          <div>
+            <Input
+              id="contact_email"
+              label="Contact Email"
+              type="email"
+              value={formData.contact_email}
+              onChange={(e) => handleChange("contact_email", e.target.value)}
+              error={
+                formData.contact_email && !isValidEmail(formData.contact_email)
+                  ? "Invalid email"
+                  : formData.contact_email && isUcsdEmail(formData.contact_email)
+                  ? "UCSD emails expire after graduation. Please use a personal email."
+                  : undefined
+              }
+            />
+            <p className="mt-1 text-xs text-text-muted">
+              Use a personal email — UCSD emails expire after graduation.
+            </p>
+          </div>
         </section>
 
         {/* Visibility */}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { isUcsdEmail } from "@/lib/utils";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -16,6 +17,12 @@ export async function GET(request: Request) {
       } = await supabase.auth.getUser();
 
       if (user) {
+        // Block UCSD emails — they expire after graduation
+        if (isUcsdEmail(user.email ?? "")) {
+          await supabase.auth.signOut();
+          return NextResponse.redirect(`${origin}/?error=ucsd_email`);
+        }
+
         try {
           const serviceClient = await createServiceClient();
 

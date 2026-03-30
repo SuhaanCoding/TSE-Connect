@@ -7,9 +7,10 @@ import { createClient } from "@/lib/supabase/client";
 interface HeroProps {
   isSignedIn: boolean;
   isOnboarded: boolean;
+  authError?: string;
 }
 
-export default function Hero({ isSignedIn, isOnboarded }: HeroProps) {
+export default function Hero({ isSignedIn, isOnboarded, authError }: HeroProps) {
   const handleSignIn = async () => {
     const supabase = createClient();
     await supabase.auth.signInWithOAuth({
@@ -90,7 +91,16 @@ export default function Hero({ isSignedIn, isOnboarded }: HeroProps) {
               >
                 Already a member? Sign in
               </button>
+              <p className="text-xs text-text-muted mt-1">
+                Use a personal Google account — UCSD emails expire after graduation.
+              </p>
             </>
+          )}
+
+          {authError === "ucsd_email" && (
+            <div className="mt-4 px-4 py-3 rounded-lg border border-red-500/20 bg-red-500/5 text-sm text-red-400 max-w-md mx-auto">
+              UCSD emails (@ucsd.edu) expire after graduation and can&apos;t be used to sign in. Please use a personal Google account instead.
+            </div>
           )}
         </div>
       </div>

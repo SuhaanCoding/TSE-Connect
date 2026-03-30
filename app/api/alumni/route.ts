@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { isUcsdEmail } from "@/lib/utils";
 
 // Escape ILIKE wildcards in user input
 function escapeIlike(input: string): string {
@@ -252,6 +253,12 @@ export async function PUT(request: Request) {
   }
   if (body.preferred_contact && !validContact.includes(body.preferred_contact)) {
     return NextResponse.json({ error: "Invalid preferred_contact" }, { status: 400 });
+  }
+  if (body.contact_email && isUcsdEmail(body.contact_email)) {
+    return NextResponse.json(
+      { error: "UCSD emails expire after graduation. Please use a personal email." },
+      { status: 400 }
+    );
   }
 
   // Validate past_companies
