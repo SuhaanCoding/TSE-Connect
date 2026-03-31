@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import SearchBar from "./SearchBar";
 import FilterBar from "./FilterBar";
 import AlumniGrid from "./AlumniGrid";
@@ -8,6 +9,45 @@ import { debounce } from "@/lib/utils";
 import type { Alumni, AlumniFilters } from "@/lib/types";
 
 const PAGE_LIMIT = 24;
+
+function parseFiltersFromParams(params: URLSearchParams): {
+  filters: AlumniFilters;
+  searchInput: string;
+  page: number;
+} {
+  return {
+    searchInput: params.get("q") || "",
+    filters: {
+      query: params.get("q") || "",
+      graduation_years: params.get("years")?.split(",").filter(Boolean) || [],
+      companies: params.get("companies")?.split(",").filter(Boolean) || [],
+      company_match:
+        (params.get("company_match") as "all" | "current" | "past") || "all",
+      opt_statuses:
+        params.get("opt_statuses")?.split(",").filter(Boolean) || [],
+    },
+    page: parseInt(params.get("page") || "1", 10),
+  };
+}
+
+function buildSearchParams(
+  filters: AlumniFilters,
+  searchInput: string,
+  page: number
+): string {
+  const params = new URLSearchParams();
+  if (searchInput) params.set("q", searchInput);
+  if (filters.graduation_years.length)
+    params.set("years", filters.graduation_years.join(","));
+  if (filters.companies.length) {
+    params.set("companies", filters.companies.join(","));
+    params.set("company_match", filters.company_match);
+  }
+  if (filters.opt_statuses.length)
+    params.set("opt_statuses", filters.opt_statuses.join(","));
+  if (page > 1) params.set("page", String(page));
+  return params.toString();
+}
 
 interface DirectoryViewProps {
   initialAlumni: Alumni[];
@@ -24,19 +64,19 @@ export default function DirectoryView({
   companies,
   viewerOptedIn,
 }: DirectoryViewProps) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialParsed = parseFiltersFromParams(searchParams);
+
   const [alumni, setAlumni] = useState<Alumni[]>(initialAlumni);
   const [totalCount, setTotalCount] = useState(initialCount);
   const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(1);
-  const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(initialParsed.page);
+  const [searchInput, setSearchInput] = useState(initialParsed.searchInput);
   const [matchTerms, setMatchTerms] = useState<string[]>([]);
-  const [filters, setFilters] = useState<AlumniFilters>({
-    query: "",
-    graduation_years: [],
-    companies: [],
-    company_match: "all",
-    opt_statuses: [],
-  });
+  const [filters, setFilters] = useState<AlumniFilters>(
+    initialParsed.filters
+  );
 
   const fetchAlumni = useCallback(async (currentFilters: AlumniFilters, currentPage: number) => {
     setLoading(true);
@@ -73,6 +113,28 @@ export default function DirectoryView({
     }, 300)
   );
 
+  // Sync URL search params when filters change
+  const debouncedUrlUpdateRef = useRef(
+    debounce((newFilters: AlumniFilters, newSearchInput: string, newPage: number) => {
+      const qs = buildSearchParams(newFilters, newSearchInput, newPage);
+      const newUrl = qs ? `/directory?${qs}` : "/directory";
+      router.replace(newUrl, { scroll: false });
+    }, 300)
+  );
+
+  // Re-read URL params when searchParams change (e.g. browser back/forward)
+  const prevParamsRef = useRef(searchParams.toString());
+  useEffect(() => {
+    const currentParamsStr = searchParams.toString();
+    if (currentParamsStr !== prevParamsRef.current) {
+      prevParamsRef.current = currentParamsStr;
+      const parsed = parseFiltersFromParams(searchParams);
+      setSearchInput(parsed.searchInput);
+      setFilters(parsed.filters);
+      setPage(parsed.page);
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     const isDefault =
       !searchInput &&
@@ -87,18 +149,23 @@ export default function DirectoryView({
       setTotalCount(initialCount);
       setMatchTerms([]);
       setPage(1);
+      debouncedUrlUpdateRef.current(filters, "", 1);
       return;
     }
 
     setPage(1);
     debouncedFetchRef.current({ ...filters, query: searchInput }, 1);
+    debouncedUrlUpdateRef.current(filters, searchInput, 1);
   }, [searchInput, filters, initialAlumni, initialCount]);
 
   const handlePageChange = useCallback((newPage: number) => {
     setPage(newPage);
     const currentFilters = { ...filters, query: searchInput };
     fetchAlumni(currentFilters, newPage);
-  }, [filters, searchInput, fetchAlumni]);
+    const qs = buildSearchParams(filters, searchInput, newPage);
+    const newUrl = qs ? `/directory?${qs}` : "/directory";
+    router.replace(newUrl, { scroll: false });
+  }, [filters, searchInput, fetchAlumni, router]);
 
   const handleFilterChange = (partial: Partial<AlumniFilters>) => {
     setFilters((prev) => ({ ...prev, ...partial }));

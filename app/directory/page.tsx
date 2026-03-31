@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCachedUser, getCachedAlumniProfile } from "@/lib/supabase/cached";
@@ -88,13 +89,15 @@ export default async function DirectoryPage() {
             </p>
           </div>
 
-          <DirectoryView
-            initialAlumni={sanitizedAlumni}
-            initialCount={count || 0}
-            years={years}
-            companies={companies}
-            viewerOptedIn={viewerOptedIn}
-          />
+          <Suspense>
+            <DirectoryView
+              initialAlumni={sanitizedAlumni}
+              initialCount={count || 0}
+              years={years}
+              companies={companies}
+              viewerOptedIn={viewerOptedIn}
+            />
+          </Suspense>
         </div>
       </main>
       <Footer />
