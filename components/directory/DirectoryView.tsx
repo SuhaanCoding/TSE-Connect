@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import SearchBar from "./SearchBar";
 import FilterBar from "./FilterBar";
 import AlumniGrid from "./AlumniGrid";
@@ -65,7 +65,6 @@ export default function DirectoryView({
   viewerOptedIn,
 }: DirectoryViewProps) {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const initialParsed = parseFiltersFromParams(searchParams);
 
   const [alumni, setAlumni] = useState<Alumni[]>(initialAlumni);
@@ -113,27 +112,31 @@ export default function DirectoryView({
     }, 300)
   );
 
-  // Sync URL search params when filters change
+  // Sync URL search params when filters change (using history.pushState
+  // to avoid triggering useSearchParams and causing an infinite loop)
   const debouncedUrlUpdateRef = useRef(
     debounce((newFilters: AlumniFilters, newSearchInput: string, newPage: number) => {
       const qs = buildSearchParams(newFilters, newSearchInput, newPage);
       const newUrl = qs ? `/directory?${qs}` : "/directory";
-      router.replace(newUrl, { scroll: false });
+      // Only push if URL actually changed
+      if (window.location.pathname + window.location.search !== newUrl) {
+        window.history.pushState(null, "", newUrl);
+      }
     }, 300)
   );
 
-  // Re-read URL params when searchParams change (e.g. browser back/forward)
-  const prevParamsRef = useRef(searchParams.toString());
+  // Restore filters when browser back/forward is used
   useEffect(() => {
-    const currentParamsStr = searchParams.toString();
-    if (currentParamsStr !== prevParamsRef.current) {
-      prevParamsRef.current = currentParamsStr;
-      const parsed = parseFiltersFromParams(searchParams);
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const parsed = parseFiltersFromParams(params);
       setSearchInput(parsed.searchInput);
       setFilters(parsed.filters);
       setPage(parsed.page);
-    }
-  }, [searchParams]);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   useEffect(() => {
     const isDefault =
@@ -164,8 +167,8 @@ export default function DirectoryView({
     fetchAlumni(currentFilters, newPage);
     const qs = buildSearchParams(filters, searchInput, newPage);
     const newUrl = qs ? `/directory?${qs}` : "/directory";
-    router.replace(newUrl, { scroll: false });
-  }, [filters, searchInput, fetchAlumni, router]);
+    window.history.replaceState(window.history.state, "", newUrl);
+  }, [filters, searchInput, fetchAlumni]);
 
   const handleFilterChange = (partial: Partial<AlumniFilters>) => {
     setFilters((prev) => ({ ...prev, ...partial }));

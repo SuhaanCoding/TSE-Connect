@@ -6,6 +6,7 @@ import Footer from "@/components/layout/Footer";
 import Avatar from "@/components/ui/Avatar";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import BackButton from "@/components/ui/BackButton";
 
 interface ProfileDetailPageProps {
   params: Promise<{ id: string }>;
@@ -60,15 +61,10 @@ export default async function ProfileDetailPage({
       <Navbar />
       <main className="pt-24 pb-16 px-6">
         <div className="max-w-2xl mx-auto">
-          <Link
-            href="/directory"
+          <BackButton
+            label="Back to Directory"
             className="inline-flex items-center gap-1 text-sm text-text-muted hover:text-foreground transition-colors mb-8"
-          >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-            </svg>
-            Back to Directory
-          </Link>
+          />
 
           <div className="space-y-8">
             {/* Header */}
