@@ -201,6 +201,7 @@ export default function DirectoryView({
       setMatchTerms([]);
       setPage(1);
       directoryCache = null;
+      lastAppliedKey.current = "";
       debouncedUrlUpdateRef.current(filters, "", 1);
       return;
     }
