@@ -10,6 +10,18 @@ import type { Alumni, AlumniFilters } from "@/lib/types";
 
 const PAGE_LIMIT = 24;
 
+// Module-level cache survives client-side navigations (component unmount/remount)
+let directoryCache: {
+  key: string;
+  alumni: Alumni[];
+  totalCount: number;
+  matchTerms: string[];
+} | null = null;
+
+function cacheKey(filters: AlumniFilters, searchInput: string, page: number): string {
+  return JSON.stringify({ filters, searchInput, page });
+}
+
 function parseFiltersFromParams(params: URLSearchParams): {
   filters: AlumniFilters;
   searchInput: string;
@@ -67,15 +79,38 @@ export default function DirectoryView({
   const searchParams = useSearchParams();
   const initialParsed = parseFiltersFromParams(searchParams);
 
-  const [alumni, setAlumni] = useState<Alumni[]>(initialAlumni);
-  const [totalCount, setTotalCount] = useState(initialCount);
-  const [loading, setLoading] = useState(false);
+  const hasInitialFilters =
+    !!initialParsed.searchInput ||
+    initialParsed.filters.graduation_years.length > 0 ||
+    initialParsed.filters.companies.length > 0 ||
+    initialParsed.filters.opt_statuses.length > 0;
+
+  // Check if we have cached results for these exact filters
+  const cachedKey = cacheKey(initialParsed.filters, initialParsed.searchInput, initialParsed.page);
+  const cached = directoryCache?.key === cachedKey ? directoryCache : null;
+
+  const [alumni, setAlumni] = useState<Alumni[]>(
+    cached ? cached.alumni : hasInitialFilters ? [] : initialAlumni
+  );
+  const [totalCount, setTotalCount] = useState(
+    cached ? cached.totalCount : hasInitialFilters ? 0 : initialCount
+  );
+  const [loading, setLoading] = useState(hasInitialFilters && !cached);
   const [page, setPage] = useState(initialParsed.page);
   const [searchInput, setSearchInput] = useState(initialParsed.searchInput);
-  const [matchTerms, setMatchTerms] = useState<string[]>([]);
+  const [matchTerms, setMatchTerms] = useState<string[]>(cached?.matchTerms || []);
   const [filters, setFilters] = useState<AlumniFilters>(
     initialParsed.filters
   );
+  const initialFetchDone = useRef(!!cached);
+  const isFirstRun = useRef(true);
+  const lastAppliedKey = useRef(cachedKey);
+
+  // Refs for server-rendered data — avoids triggering the effect on new array references
+  const initialAlumniRef = useRef(initialAlumni);
+  const initialCountRef = useRef(initialCount);
+  initialAlumniRef.current = initialAlumni;
+  initialCountRef.current = initialCount;
 
   const fetchAlumni = useCallback(async (currentFilters: AlumniFilters, currentPage: number) => {
     setLoading(true);
@@ -96,9 +131,22 @@ export default function DirectoryView({
 
       const res = await fetch(`/api/alumni?${params}`);
       const json = await res.json();
-      setAlumni(json.data || []);
-      setTotalCount(json.count || 0);
-      setMatchTerms(json.matchTerms || []);
+      const data = json.data || [];
+      const count = json.count || 0;
+      const terms = json.matchTerms || [];
+      setAlumni(data);
+      setTotalCount(count);
+      setMatchTerms(terms);
+
+      // Cache results for instant restore on back-navigation
+      const newKey = cacheKey(currentFilters, currentFilters.query || "", currentPage);
+      directoryCache = {
+        key: newKey,
+        alumni: data,
+        totalCount: count,
+        matchTerms: terms,
+      };
+      lastAppliedKey.current = newKey;
     } catch (error) {
       console.error("Failed to fetch alumni:", error);
     } finally {
@@ -148,18 +196,35 @@ export default function DirectoryView({
 
     if (isDefault) {
       // Reset to server-rendered initial data
-      setAlumni(initialAlumni);
-      setTotalCount(initialCount);
+      setAlumni(initialAlumniRef.current);
+      setTotalCount(initialCountRef.current);
       setMatchTerms([]);
       setPage(1);
+      directoryCache = null;
       debouncedUrlUpdateRef.current(filters, "", 1);
       return;
     }
 
+    // First mount with active filters
+    if (isFirstRun.current) {
+      isFirstRun.current = false;
+      if (!initialFetchDone.current) {
+        // No cache — fetch immediately
+        initialFetchDone.current = true;
+        fetchAlumni({ ...filters, query: searchInput }, page);
+      }
+      // Cache hit — data already displayed via useState, skip fetch
+      return;
+    }
+
+    // User changed filters — debounced fetch
+    const currentKey = cacheKey({ ...filters, query: searchInput }, searchInput, 1);
+    if (currentKey === lastAppliedKey.current) return;
+    lastAppliedKey.current = currentKey;
     setPage(1);
     debouncedFetchRef.current({ ...filters, query: searchInput }, 1);
     debouncedUrlUpdateRef.current(filters, searchInput, 1);
-  }, [searchInput, filters, initialAlumni, initialCount]);
+  }, [searchInput, filters]);
 
   const handlePageChange = useCallback((newPage: number) => {
     setPage(newPage);
