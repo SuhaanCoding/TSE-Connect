@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import Button from "@/components/ui/Button";
-import { createClient } from "@/lib/supabase/client";
+import InAppBrowserModal from "@/components/ui/InAppBrowserModal";
+import { useGoogleSignIn } from "@/hooks/useGoogleSignIn";
 
 interface BottomCTAProps {
   isSignedIn: boolean;
@@ -10,17 +11,16 @@ interface BottomCTAProps {
 }
 
 export default function BottomCTA({ isSignedIn, isOnboarded }: BottomCTAProps) {
-  const handleSignIn = async () => {
-    const supabase = createClient();
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-  };
+  const { handleSignIn, showBrowserModal, detectedPlatform, closeBrowserModal } =
+    useGoogleSignIn();
 
   return (
+    <>
+    <InAppBrowserModal
+      isOpen={showBrowserModal}
+      onClose={closeBrowserModal}
+      platform={detectedPlatform}
+    />
     <section className="py-24">
       <div className="max-w-3xl mx-auto px-6 text-center">
         <h2 className="font-heading font-bold text-3xl md:text-4xl tracking-tight mb-6">
@@ -51,5 +51,6 @@ export default function BottomCTA({ isSignedIn, isOnboarded }: BottomCTAProps) {
         )}
       </div>
     </section>
+    </>
   );
 }

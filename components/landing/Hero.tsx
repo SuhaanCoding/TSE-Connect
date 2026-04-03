@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import Button from "@/components/ui/Button";
-import { createClient } from "@/lib/supabase/client";
+import InAppBrowserModal from "@/components/ui/InAppBrowserModal";
+import { useGoogleSignIn } from "@/hooks/useGoogleSignIn";
 
 interface HeroProps {
   isSignedIn: boolean;
@@ -11,17 +12,16 @@ interface HeroProps {
 }
 
 export default function Hero({ isSignedIn, isOnboarded, authError }: HeroProps) {
-  const handleSignIn = async () => {
-    const supabase = createClient();
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-  };
+  const { handleSignIn, showBrowserModal, detectedPlatform, closeBrowserModal } =
+    useGoogleSignIn();
 
   return (
+    <>
+    <InAppBrowserModal
+      isOpen={showBrowserModal}
+      onClose={closeBrowserModal}
+      platform={detectedPlatform}
+    />
     <section className="relative flex items-center justify-center overflow-hidden pt-12 pb-4 md:pt-16 md:pb-6">
       {/* Dot grid background */}
       <div
@@ -102,5 +102,6 @@ export default function Hero({ isSignedIn, isOnboarded, authError }: HeroProps) 
         </div>
       </div>
     </section>
+    </>
   );
 }
