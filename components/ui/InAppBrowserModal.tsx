@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@supabase/supabase-js";
 import { isUcsdEmail } from "@/lib/utils";
 
 interface InAppBrowserModalProps {
@@ -39,11 +39,17 @@ export default function InAppBrowserModal({
     }
 
     setSending(true);
-    const supabase = createClient();
+    // Use implicit flow (not PKCE) so the magic link works when opened
+    // in the system browser, which won't have the PKCE code_verifier
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { flowType: "implicit" } }
+    );
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email: trimmed,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${window.location.origin}/auth/confirm`,
       },
     });
 
@@ -61,7 +67,7 @@ export default function InAppBrowserModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4 pb-8"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 pt-24"
       onClick={onClose}
     >
       <div
