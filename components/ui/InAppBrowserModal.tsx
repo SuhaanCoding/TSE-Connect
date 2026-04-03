@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import Button from "@/components/ui/Button";
-import { getPlatformInstructions } from "@/lib/inAppBrowser";
+import Input from "@/components/ui/Input";
+import { createClient } from "@/lib/supabase/client";
+import { isUcsdEmail } from "@/lib/utils";
 
 interface InAppBrowserModalProps {
   isOpen: boolean;
@@ -15,22 +17,47 @@ export default function InAppBrowserModal({
   onClose,
   platform,
 }: InAppBrowserModalProps) {
-  const [copied, setCopied] = useState(false);
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Fallback: prompt user to copy manually
-      window.prompt("Copy this link and open it in your browser:", window.location.href);
+  const handleSendLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    const trimmed = email.trim();
+    if (!trimmed) return;
+
+    if (isUcsdEmail(trimmed)) {
+      setError(
+        "UCSD emails expire after graduation. Please use a personal email."
+      );
+      return;
     }
+
+    setSending(true);
+    const supabase = createClient();
+    const { error: otpError } = await supabase.auth.signInWithOtp({
+      email: trimmed,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    setSending(false);
+
+    if (otpError) {
+      setError(otpError.message);
+      return;
+    }
+
+    setSent(true);
   };
 
-  const browserName = platform ? `${platform}'s in-app browser` : "this in-app browser";
+  const browserName = platform ?? "this app";
 
   return (
     <div
@@ -41,7 +68,7 @@ export default function InAppBrowserModal({
         className="bg-background border border-border rounded-xl max-w-md w-full p-6 animate-fade-in-up"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* External link icon */}
+        {/* Mail icon */}
         <div className="flex justify-center mb-4">
           <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
             <svg
@@ -56,75 +83,70 @@ export default function InAppBrowserModal({
               strokeLinejoin="round"
               className="text-accent"
             >
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-              <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
+              <rect width="20" height="16" x="2" y="4" rx="2" />
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
             </svg>
           </div>
         </div>
 
-        <h2 className="font-heading font-bold text-xl text-center mb-2">
-          Open in Your Browser
-        </h2>
+        {sent ? (
+          <>
+            <h2 className="font-heading font-bold text-xl text-center mb-2">
+              Check your email
+            </h2>
+            <p className="text-text-secondary text-sm text-center mb-2">
+              We sent a sign-in link to{" "}
+              <span className="text-foreground font-medium">{email}</span>
+            </p>
+            <p className="text-text-muted text-xs text-center mb-5">
+              Tap the link in the email to sign in. It will open in your
+              browser automatically.
+            </p>
+            <button
+              onClick={onClose}
+              className="w-full text-sm text-text-secondary hover:text-foreground transition-colors cursor-pointer"
+            >
+              Close
+            </button>
+          </>
+        ) : (
+          <>
+            <h2 className="font-heading font-bold text-xl text-center mb-2">
+              Sign in with email
+            </h2>
+            <p className="text-text-secondary text-sm text-center mb-5">
+              Google sign-in isn&apos;t available in {browserName}.
+              We&apos;ll send you a sign-in link instead.
+            </p>
 
-        <p className="text-text-secondary text-sm text-center mb-5">
-          Google sign-in isn&apos;t supported in {browserName}. Open this page
-          in Safari or Chrome to continue.
-        </p>
-
-        <Button
-          onClick={handleCopyLink}
-          className="w-full rounded-lg mb-3"
-          size="md"
-        >
-          {copied ? (
-            <>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            <form onSubmit={handleSendLink} className="space-y-3">
+              <Input
+                type="email"
+                placeholder="you@gmail.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                error={error ?? undefined}
+                autoFocus
+                required
+              />
+              <Button
+                type="submit"
+                loading={sending}
+                className="w-full rounded-lg"
+                size="md"
               >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              Copied!
-            </>
-          ) : (
-            <>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-              Copy Link
-            </>
-          )}
-        </Button>
+                Send Sign-in Link
+              </Button>
+            </form>
 
-        <p className="text-text-muted text-xs text-center">
-          {getPlatformInstructions(platform)}
-        </p>
-
-        <button
-          onClick={onClose}
-          className="mt-4 w-full text-sm text-text-secondary hover:text-foreground transition-colors cursor-pointer"
-        >
-          Close
-        </button>
+            <button
+              onClick={onClose}
+              className="mt-4 w-full text-sm text-text-secondary hover:text-foreground transition-colors cursor-pointer"
+            >
+              Close
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

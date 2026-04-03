@@ -29,18 +29,3 @@ export function detectInAppBrowser(): InAppBrowserResult {
 
   return { isInApp: false, platform: null };
 }
-
-export function getPlatformInstructions(platform: string | null): string {
-  switch (platform) {
-    case "LinkedIn":
-      return "Tap ⋮ or ••• in the top right, then select \"Open in browser\"";
-    case "Facebook":
-      return "Tap ⋮ at the bottom right, then select \"Open in browser\"";
-    case "Instagram":
-      return "Tap ⋮ in the top right, then select \"Open in browser\"";
-    case "X (Twitter)":
-      return "Tap the share icon, then select \"Open in browser\"";
-    default:
-      return "Open your browser app and paste the copied link";
-  }
-}
