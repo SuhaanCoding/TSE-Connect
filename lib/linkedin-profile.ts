@@ -1,3 +1,5 @@
+import { agreedGraduationEvidence, isSchoolLabel } from "./education";
+
 type JsonObject = Record<string, unknown>;
 
 function object(value: unknown): JsonObject {
@@ -283,6 +285,7 @@ export interface ScrapeAlumnus {
   id: string;
   full_name: string;
   linkedin_url: string | null;
+  graduation_year?: string | null;
 }
 
 /** Pure import planning: never match on a person's name or write authored fields. */
@@ -303,6 +306,7 @@ export function planProfileImport(
     id: string;
     inputUrl: string;
     data: Record<string, unknown>;
+    expectedGraduationYear?: string;
   }[] = [];
   for (const inputUrl of [
     ...new Set(inputUrls.map(normalizeLinkedInUrl).filter(Boolean)),
@@ -355,6 +359,11 @@ export function planProfileImport(
       ).values(),
     ];
     const failure = candidates.map(object).find((row) => unavailable(row));
+    const graduation = agreedGraduationEvidence(candidates, refreshedAt);
+    const graduating = graduation
+      ? people.filter((person) => isSchoolLabel(person.graduation_year))
+      : [];
+    const useful = !!best || graduating.length > 0;
     const failureReason =
       typeof failure?.error === "string"
         ? failure.error.slice(0, 400)
@@ -362,20 +371,25 @@ export function planProfileImport(
     const outcome: ScrapeOutcome = {
       inputUrl,
       name: people[0]?.full_name || "Unknown profile",
-      alumniIds: people.map((person) => person.id),
+      alumniIds: (best || !graduating.length ? people : graduating).map(
+        (person) => person.id,
+      ),
       source,
-      fields: best ? Object.keys(best.data) : [],
-      status: !people.length ? "unmatched" : best ? "updated" : "unavailable",
+      fields: [
+        ...(best ? Object.keys(best.data) : []),
+        ...(graduating.length ? ["graduation_year"] : []),
+      ],
+      status: !people.length ? "unmatched" : useful ? "updated" : "unavailable",
       reason: !people.length
         ? "The requested and returned URLs do not match a roster profile."
-        : !best
+        : !useful
           ? candidates.length
             ? failureReason
             : "The provider returned no result for this URL."
           : null,
     };
     outcomes.push(outcome);
-    if (!best || !people.length) continue;
+    if (!useful || !people.length) continue;
     // Only persist a redirected address when the provider ties it to inputUrl.
     const redirect = usable.find(
       (item) =>
@@ -387,13 +401,26 @@ export function planProfileImport(
     const returnedUrl = redirect
       ? normalizeLinkedInUrl(extractProfileUrl(redirect.profile) || "")
       : "";
-    const data = { ...best.data, last_scraped_at: refreshedAt };
+    const data = { ...best?.data, last_scraped_at: refreshedAt };
     if (returnedUrl && returnedUrl !== inputUrl) {
       Object.assign(data, { linkedin_url: `https://www.${returnedUrl}/` });
       outcome.fields.push("linkedin_url");
     }
-    for (const person of people)
-      updates.push({ id: person.id, inputUrl, data });
+    for (const person of best ? people : graduating) {
+      const changeGraduation =
+        graduation && isSchoolLabel(person.graduation_year);
+      updates.push({
+        id: person.id,
+        inputUrl,
+        data: {
+          ...data,
+          ...(changeGraduation ? { graduation_year: graduation.year } : {}),
+        },
+        ...(changeGraduation
+          ? { expectedGraduationYear: person.graduation_year! }
+          : {}),
+      });
+    }
   }
   return { outcomes, updates };
 }

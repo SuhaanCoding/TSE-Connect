@@ -306,3 +306,63 @@ export function matchingProfiles<T extends MatchableProfile>(
     ),
   ).slice(0, Math.max(0, Math.floor(limit)));
 }
+
+/** Rank the entire visible pool, retaining zero-signal profiles for discovery. */
+export function rankAllProfiles<T extends MatchableProfile>(
+  viewer: T,
+  profiles: T[],
+  query = "",
+) {
+  const authored = interestFields(viewer, false);
+  const fields = query.trim()
+    ? [
+        { text: query.trim(), weight: 3 },
+        ...authored.map((field) => ({ ...field, weight: field.weight * 0.25 })),
+      ]
+    : authored.length
+      ? authored
+      : interestFields(viewer, true);
+  const candidates = profiles.filter((profile) => profile.id !== viewer.id);
+  const needle = query.trim().toLowerCase();
+  return rank(
+    fields,
+    candidates,
+    (profile) => [
+      ...interestFields(profile, true),
+      ...(needle
+        ? [
+            {
+              text: [
+                profile.full_name,
+                profile.current_company,
+                ...(profile.past_companies || []),
+              ]
+                .filter(Boolean)
+                .join(" "),
+              weight: 1,
+            },
+          ]
+        : []),
+    ],
+    true,
+  )
+    .map((profile) => ({
+      ...profile,
+      match_score:
+        profile.match_score +
+        (needle
+          ? profile.full_name?.toLowerCase() === needle
+            ? 3
+            : profile.full_name?.toLowerCase().includes(needle)
+              ? 2
+              : profile.current_company?.toLowerCase().includes(needle)
+                ? 1
+                : 0
+          : 0),
+    }))
+    .sort(
+      (a, b) =>
+        b.match_score - a.match_score ||
+        (a.full_name || "").localeCompare(b.full_name || ""),
+    );
+}

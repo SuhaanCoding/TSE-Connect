@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import Link from "next/link";
 import Card from "@/components/ui/Card";
 import Avatar from "@/components/ui/Avatar";
@@ -18,6 +18,8 @@ interface AlumniCardProps {
   index: number;
   viewerOptedIn: boolean;
   companyFilter?: string[];
+  ranking?: { rank: number; signal_level: string; reasons: string[] };
+  actions?: ReactNode;
 }
 
 function StatusBadge({ status }: { status: OptStatus }) {
@@ -50,6 +52,8 @@ const AlumniCard = memo(function AlumniCard({
   index,
   viewerOptedIn,
   companyFilter = [],
+  ranking,
+  actions,
 }: AlumniCardProps) {
   const canSeeEmail = viewerOptedIn && alumni.opt_status === "opted_in";
   const rawLinkedIn = alumni.linkedin_url?.trim() || "";
@@ -73,6 +77,16 @@ const AlumniCard = memo(function AlumniCard({
       className="animate-fade-in-up group h-full flex flex-col"
       style={{ animationDelay: `${index * 50}ms` }}
     >
+      {ranking && (
+        <div className="mb-4 flex items-center justify-between gap-2 border-b border-border pb-3">
+          <span className="font-heading text-xl font-bold tabular-nums text-accent-light">
+            #{ranking.rank}
+          </span>
+          <span className="text-[11px] text-text-muted">
+            {ranking.signal_level}
+          </span>
+        </div>
+      )}
       <Link
         href={`/profile/${alumni.id}`}
         className="block space-y-3 flex-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -123,11 +137,18 @@ const AlumniCard = memo(function AlumniCard({
           </p>
         )}
         <KeywordTags keywords={alumni.keywords} compact />
-        {alumni.shared_terms?.length ? (
+        {!ranking && alumni.shared_terms?.length ? (
           <p className="line-clamp-2 text-[11px] text-text-muted">
             Shared interests: {alumni.shared_terms.join(", ")}
           </p>
         ) : null}
+        {ranking && (
+          <ul className="space-y-1 text-xs leading-relaxed text-text-secondary">
+            {ranking.reasons.slice(0, 3).map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        )}
 
         {alumni.past_companies && alumni.past_companies.length > 0 && (
           <div className="flex flex-wrap gap-1">
@@ -212,6 +233,7 @@ const AlumniCard = memo(function AlumniCard({
           </Link>
         )}
       </div>
+      {actions && <div className="mt-3">{actions}</div>}
     </Card>
   );
 });

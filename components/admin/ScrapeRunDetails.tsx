@@ -8,6 +8,7 @@ const FIELD_LABELS: Record<string, string> = {
   past_companies: "company history",
   linkedin_about: "About",
   linkedin_background: "work/project descriptions",
+  graduation_year: "verified graduation year",
   linkedin_url: "LinkedIn address",
 };
 export default function ScrapeRunDetails({

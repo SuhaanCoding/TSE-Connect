@@ -6,12 +6,14 @@ interface SearchBarProps {
   value: string;
   onChange: (value: string) => void;
   onCompositionChange?: (isComposing: boolean) => void;
+  onSubmit?: () => void;
 }
 
 export default function SearchBar({
   value,
   onChange,
   onCompositionChange,
+  onSubmit,
 }: SearchBarProps) {
   const input = useRef<HTMLInputElement>(null);
   return (
@@ -36,6 +38,12 @@ export default function SearchBar({
         onChange={(e) => onChange(e.target.value)}
         onCompositionStart={() => onCompositionChange?.(true)}
         onCompositionEnd={() => onCompositionChange?.(false)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            onSubmit?.();
+          }
+        }}
         aria-label="Search alumni by name, company, role, bio, or keyword"
         placeholder="Search people, companies, interests, or expertise..."
         className="w-full rounded-xl bg-surface border border-border pl-12 pr-10 py-3.5 text-sm text-foreground placeholder:text-text-muted transition-colors focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"

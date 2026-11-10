@@ -197,7 +197,7 @@ export function createScrapeService(
     try {
       const { data: alumni, error: alumniError } = await db
         .from("alumni")
-        .select("id,full_name,linkedin_url");
+        .select("id,full_name,linkedin_url,graduation_year");
       if (alumniError)
         throw new Error(
           "Could not read the alumni roster; no profile updates were attempted.",
@@ -229,11 +229,11 @@ export function createScrapeService(
           await Promise.all(
             plan.updates
               .slice(offset, offset + 25)
-              .map(async ({ id, inputUrl, data }) => {
-                const { data: saved, error: writeError } = await db
-                  .from("alumni")
-                  .update(data)
-                  .eq("id", id)
+              .map(async ({ id, inputUrl, data, expectedGraduationYear }) => {
+                let write = db.from("alumni").update(data).eq("id", id);
+                if (expectedGraduationYear)
+                  write = write.eq("graduation_year", expectedGraduationYear);
+                const { data: saved, error: writeError } = await write
                   .select("id")
                   .maybeSingle();
                 if (writeError || !saved) {

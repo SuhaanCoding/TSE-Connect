@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { timingSafeEqual } from "crypto";
+import { preserveGraduationYear } from "@/lib/education";
 
 function safeCompare(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -21,23 +22,23 @@ export async function POST(request: Request) {
   if (!SPREADSHEET_ID || !GOOGLE_API_KEY) {
     return NextResponse.json(
       { error: "Missing Google Sheets configuration" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
   try {
     // Fetch both sheets from the NEW spreadsheet in parallel
     const [resultsRes, everyoneRes] = await Promise.all([
       fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Results?key=${GOOGLE_API_KEY}`
+        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Results?key=${GOOGLE_API_KEY}`,
       ),
       fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Everyone?key=${GOOGLE_API_KEY}`
+        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Everyone?key=${GOOGLE_API_KEY}`,
       ),
     ]);
 
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
       console.error("Google Sheets fetch error:", errDetails);
       return NextResponse.json(
         { error: "Failed to fetch Google Sheets data" },
-        { status: 502 }
+        { status: 502 },
       );
     }
 
@@ -74,7 +75,9 @@ export async function POST(request: Request) {
         const trimmedName = name.trim();
         // Skip excessively long names
         if (trimmedName.length > 255) {
-          console.warn(`Sync: skipping long name (${trimmedName.length} chars)`);
+          console.warn(
+            `Sync: skipping long name (${trimmedName.length} chars)`,
+          );
           continue;
         }
 
@@ -121,7 +124,8 @@ export async function POST(request: Request) {
 
         alumni.push({
           full_name: trimmedName,
-          graduation_year: career?.graduation_year || yearOrStatus?.trim() || null,
+          graduation_year:
+            career?.graduation_year || yearOrStatus?.trim() || null,
           current_role: career?.current_role || null,
           current_company: career?.current_company || null,
           past_companies: career?.past_companies || [],
@@ -151,14 +155,26 @@ export async function POST(request: Request) {
     // Keep the spreadsheet's older career data from replacing a LinkedIn refresh.
     const { data: existing, error: existingError } = await supabase
       .from("alumni")
-      .select("full_name, auth_id, last_scraped_at, current_role, current_company, past_companies");
+      .select(
+        "full_name, auth_id, last_scraped_at, current_role, current_company, past_companies, graduation_year",
+      );
 
     if (existingError) {
-      return NextResponse.json({ error: "Could not read existing profiles" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Could not read existing profiles" },
+        { status: 500 },
+      );
     }
-    const existingByName = new Map((existing || []).map((person) => [person.full_name, person]));
+    const existingByName = new Map(
+      (existing || []).map((person) => [person.full_name, person]),
+    );
     for (const person of alumni) {
       const saved = existingByName.get(person.full_name);
+      if (saved)
+        person.graduation_year = preserveGraduationYear(
+          saved.graduation_year,
+          person.graduation_year,
+        );
       if (saved?.last_scraped_at) {
         person.current_role = saved.current_role;
         person.current_company = saved.current_company;
@@ -166,7 +182,11 @@ export async function POST(request: Request) {
       }
     }
 
-    const claimedNames = new Set((existing || []).filter((person) => person.auth_id).map((person) => person.full_name));
+    const claimedNames = new Set(
+      (existing || [])
+        .filter((person) => person.auth_id)
+        .map((person) => person.full_name),
+    );
 
     let synced = 0;
     let updated = 0;
@@ -174,7 +194,9 @@ export async function POST(request: Request) {
 
     // Split into claimed vs unclaimed
     const claimedAlumni = alumni.filter((a) => claimedNames.has(a.full_name));
-    const unclaimedAlumni = alumni.filter((a) => !claimedNames.has(a.full_name));
+    const unclaimedAlumni = alumni.filter(
+      (a) => !claimedNames.has(a.full_name),
+    );
 
     // Batch update claimed profiles (career data only) in groups of 50
     const BATCH_SIZE = 50;
@@ -190,14 +212,18 @@ export async function POST(request: Request) {
               current_company: person.current_company,
               past_companies: person.past_companies,
             })
-            .eq("full_name", person.full_name)
-        )
+            .eq("full_name", person.full_name),
+        ),
       );
       results.forEach((r, idx) => {
         if (!r.error) updated++;
         else {
           errors++;
-          if (errors <= 3) console.error(`Failed to update ${batch[idx].full_name}:`, r.error.message);
+          if (errors <= 3)
+            console.error(
+              `Failed to update ${batch[idx].full_name}:`,
+              r.error.message,
+            );
         }
       });
     }
@@ -216,14 +242,20 @@ export async function POST(request: Request) {
             linkedin_url: person.linkedin_url,
             opt_status: person.opt_status,
           };
-          return supabase.from("alumni").upsert(record, { onConflict: "full_name" });
-        })
+          return supabase
+            .from("alumni")
+            .upsert(record, { onConflict: "full_name" });
+        }),
       );
       results.forEach((r, idx) => {
         if (!r.error) synced++;
         else {
           errors++;
-          if (errors <= 3) console.error(`Failed to upsert ${batch[idx].full_name}:`, r.error.message);
+          if (errors <= 3)
+            console.error(
+              `Failed to upsert ${batch[idx].full_name}:`,
+              r.error.message,
+            );
         }
       });
     }

@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import SearchBar from "./SearchBar";
 import FilterBar from "./FilterBar";
 import AlumniGrid from "./AlumniGrid";
-import ProfileMatches from "./ProfileMatches";
+import Link from "next/link";
+import NetworkExplorer from "./NetworkExplorer";
 import type { Alumni, AlumniFilters } from "@/lib/types";
 
 const PAGE_LIMIT = 24;
@@ -57,7 +58,7 @@ interface DirectoryViewProps {
   viewerOptedIn: boolean;
 }
 
-export default function DirectoryView({
+function BrowseDirectory({
   initialAlumni,
   initialCount,
   years,
@@ -101,7 +102,7 @@ export default function DirectoryView({
     const isDefault = !qs;
     const timer = setTimeout(
       async () => {
-        const url = qs ? `/directory?${qs}` : "/directory";
+        const url = `/directory?view=browse${qs ? `&${qs}` : ""}`;
         if (window.location.pathname + window.location.search !== url) {
           window.history.pushState(null, "", url);
         }
@@ -167,12 +168,6 @@ export default function DirectoryView({
         years={years}
         companies={companies}
       />
-      {!searchInput.trim() &&
-        page === 1 &&
-        !filters.graduation_years.length &&
-        !filters.companies.length &&
-        !filters.opt_statuses.length &&
-        filters.company_match === "all" && <ProfileMatches />}
       {error && (
         <div
           role="alert"
@@ -199,6 +194,44 @@ export default function DirectoryView({
           companyFilter={matchTerms}
         />
       </div>
+    </div>
+  );
+}
+
+export default function DirectoryView(props: DirectoryViewProps) {
+  const params = useSearchParams();
+  const browse =
+    params.get("view") === "browse" ||
+    (!params.get("view") &&
+      ["q", "years", "companies", "company_match", "opt_statuses", "page"].some(
+        (key) => params.has(key),
+      ));
+  return (
+    <div className="space-y-6">
+      <nav
+        aria-label="Directory views"
+        className="flex gap-6 border-b border-border"
+      >
+        <Link
+          href="/directory?view=ranked"
+          aria-current={!browse ? "page" : undefined}
+          className={`pb-3 text-sm font-medium border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${!browse ? "border-accent text-foreground" : "border-transparent text-text-muted hover:text-foreground"}`}
+        >
+          Ranked discovery
+        </Link>
+        <Link
+          href="/directory?view=browse"
+          aria-current={browse ? "page" : undefined}
+          className={`pb-3 text-sm font-medium border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${browse ? "border-accent text-foreground" : "border-transparent text-text-muted hover:text-foreground"}`}
+        >
+          Browse directory
+        </Link>
+      </nav>
+      {browse ? (
+        <BrowseDirectory {...props} />
+      ) : (
+        <NetworkExplorer years={props.years} companies={props.companies} />
+      )}
     </div>
   );
 }
