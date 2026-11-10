@@ -1,88 +1,62 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { processApifyResults } from "@/lib/scrape";
 
-/**
- * POST /api/admin/scrape/webhook — Called by Apify when a scrape run finishes.
- * Verifies the shared secret, then processes results into the alumni table.
- */
-export async function POST(request: Request) {
-  const webhookSecret = process.env.APIFY_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    console.error("APIFY_WEBHOOK_SECRET not configured");
-    return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
-  }
+export const maxDuration = 300;
 
-  let payload: { runId?: string; datasetId?: string; status?: string; secret?: string };
+export async function POST(request: Request) {
+  if (!process.env.APIFY_WEBHOOK_SECRET)
+    return NextResponse.json(
+      { error: "Callback is not configured." },
+      { status: 503 },
+    );
+  let payload: { runId?: string; datasetId?: string; secret?: string };
   try {
     payload = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-
-  // Verify secret
-  if (payload.secret !== webhookSecret) {
+  const supplied = Buffer.from(
+    typeof payload.secret === "string" ? payload.secret : "",
+  );
+  const expected = Buffer.from(process.env.APIFY_WEBHOOK_SECRET);
+  if (
+    supplied.length !== expected.length ||
+    !timingSafeEqual(supplied, expected)
+  )
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-  }
-
-  const { runId, datasetId, status } = payload;
-
-  if (!runId || !datasetId) {
-    return NextResponse.json({ error: "Missing runId or datasetId" }, { status: 400 });
-  }
-
-  const serviceClient = await createServiceClient();
-
-  // Find the scrape_runs row
-  const { data: scrapeRun } = await serviceClient
+  if (
+    !/^[a-z0-9]{17}$/i.test(payload.runId || "") ||
+    !/^[a-z0-9]{17}$/i.test(payload.datasetId || "")
+  )
+    return NextResponse.json(
+      { error: "Invalid run or dataset." },
+      { status: 400 },
+    );
+  const db = await createServiceClient();
+  const { data: run, error } = await db
     .from("scrape_runs")
-    .select("id, status")
-    .eq("apify_run_id", runId)
+    .select("id")
+    .or(`apify_run_id.eq.${payload.runId},recovery_run_id.eq.${payload.runId}`)
     .maybeSingle();
-
-  if (!scrapeRun) {
-    console.error(`Webhook received for unknown run: ${runId}`);
-    return NextResponse.json({ error: "Run not found" }, { status: 404 });
-  }
-
-  // Already processed
-  if (scrapeRun.status === "completed") {
-    return NextResponse.json({ message: "Already processed" });
-  }
-
-  // Handle non-success statuses
-  if (status !== "SUCCEEDED") {
-    await serviceClient
-      .from("scrape_runs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        error_message: `Apify run ended with status: ${status}`,
-      })
-      .eq("id", scrapeRun.id);
-
-    console.error(`Scrape run ${runId} failed with status: ${status}`);
-    return NextResponse.json({ message: `Run failed: ${status}` });
-  }
-
-  // Process results
+  if (error || !run)
+    return NextResponse.json(
+      { error: "Run not tracked yet; retry callback." },
+      { status: 404 },
+    );
   try {
-    const result = await processApifyResults(datasetId, scrapeRun.id);
-    console.log(`Webhook processed scrape run ${runId}: updated ${result.updated} alumni`);
-    return NextResponse.json({ message: "Processed", ...result });
+    const result = await processApifyResults(payload.datasetId!, run.id);
+    return NextResponse.json({ message: "Progress processed", ...result });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error(`Webhook processing failed for run ${runId}:`, message);
-
-    await serviceClient
-      .from("scrape_runs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        error_message: message,
-      })
-      .eq("id", scrapeRun.id);
-
-    return NextResponse.json({ error: "Processing failed" }, { status: 500 });
+    console.error(
+      "Scrape callback:",
+      err instanceof Error ? err.message : "Failed",
+    );
+    // Non-2xx asks Apify to retry. The lease makes duplicate deliveries safe.
+    return NextResponse.json(
+      { error: "Import interrupted; retry callback." },
+      { status: 503 },
+    );
   }
 }

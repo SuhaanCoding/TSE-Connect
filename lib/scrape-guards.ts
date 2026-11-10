@@ -36,3 +36,25 @@ export function isLimitedScrape(message: string | null | undefined): boolean {
     message || "",
   );
 }
+
+export function verifyRecoveryPricing(
+  pricing: Pricing | undefined,
+  count: number,
+  cap = 1,
+): boolean {
+  const events = pricing?.pricingPerEvent?.actorChargeEvents || {};
+  const price =
+    events.profile?.eventTieredPricingUsd?.FREE?.tieredEventPriceUsd ??
+    events.profile?.eventPriceUsd;
+  return (
+    pricing?.pricingModel === "PAY_PER_EVENT" &&
+    typeof price === "number" &&
+    price > 0 &&
+    price <= 0.0032 &&
+    count > 0 &&
+    count * price <= cap &&
+    Object.keys(events).every((event) =>
+      ["profile", "profile-with-email"].includes(event),
+    )
+  );
+}

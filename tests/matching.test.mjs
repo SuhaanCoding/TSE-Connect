@@ -148,3 +148,101 @@ test("directory and matches never expose login metadata or hidden contact detail
     "contact@example.com",
   );
 });
+
+test("recommendations connect acronyms and specific phrases instead of generic fragments", () => {
+  const me = {
+    ...viewer,
+    bio: "Reinforcement learning and ML systems",
+    keywords: ["LLMs"],
+  };
+  const exact = {
+    ...related,
+    id: "exact",
+    bio: "Reinforcement learning for large language models",
+    keywords: ["Machine learning"],
+  };
+  const vague = {
+    ...related,
+    id: "vague",
+    bio: "Learning about systems and software engineering",
+    keywords: [],
+  };
+  const matches = matchingProfiles(me, [vague, exact], 100);
+  assert.equal(matches[0].id, "exact");
+  assert.ok(matches[0].shared_terms.includes("reinforcement learning"));
+  assert.equal(
+    matches.some((p) => p.id === "vague"),
+    false,
+  );
+  assert.ok(!matches[0].shared_terms.includes("learning"));
+  assert.equal(
+    matchingProfiles({ ...viewer, bio: "", keywords: ["ML"] }, [
+      { ...related, bio: "Machine learning", keywords: [] },
+    ])[0].id,
+    "related",
+  );
+});
+
+test("explicit keywords outrank incidental mentions and repetition cannot manufacture relevance", () => {
+  const me = { ...viewer, bio: "", keywords: ["Distributed systems"] };
+  const focused = {
+    ...related,
+    id: "focused",
+    bio: "",
+    keywords: ["Distributed systems"],
+  };
+  const incidental = {
+    ...related,
+    id: "incidental",
+    bio: "",
+    keywords: [],
+    linkedin_background:
+      "I built distributed systems. " +
+      "Fashion illustration apparel sketching visual identity typography printing retail textiles ".repeat(
+        50,
+      ),
+  };
+  const generic = {
+    ...related,
+    id: "generic",
+    bio: "systems learning engineering ".repeat(200),
+    keywords: [],
+  };
+  const matches = matchingProfiles(me, [generic, incidental, focused], 100);
+  assert.equal(matches[0].id, "focused");
+  assert.equal(
+    matches.some((p) => p.id === "generic"),
+    false,
+  );
+  assert.ok(
+    matches.every(
+      (p) =>
+        Number.isFinite(p.match_score) &&
+        p.match_score <= 1 &&
+        p.match_score > 0,
+    ),
+  );
+});
+
+test("contact addresses and URLs are not shared-interest evidence; expanded lists stay private", () => {
+  const me = { ...viewer, bio: "email: same@example.com", keywords: [] };
+  assert.deepEqual(
+    matchingProfiles(me, [
+      { ...related, bio: "email: same@example.com", keywords: [] },
+    ]),
+    [],
+  );
+  const many = Array.from({ length: 12 }, (_, i) => ({
+    ...related,
+    id: `person-${i}`,
+  }));
+  assert.equal(matchingProfiles(viewer, many, 100).length, 12);
+  assert.equal(
+    matchingProfiles(
+      viewer,
+      [...many, { ...related, id: "hidden", opt_status: "not_confirmed" }],
+      100,
+    ).length,
+    12,
+  );
+});

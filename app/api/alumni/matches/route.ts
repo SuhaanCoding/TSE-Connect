@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { directoryCorpus, publicDirectoryProfile } from "@/lib/directory";
 import { matchingProfiles, profileTokens } from "@/lib/profile-matching";
 
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -32,8 +32,24 @@ export async function GET() {
       { error: "Couldn’t load matches." },
       { status: 500 },
     );
-  const matches = matchingProfiles(viewer, data).map((profile) =>
-    publicDirectoryProfile(profile, true),
+  const parsedLimit = Number(
+    new URL(request.url).searchParams.get("limit") || 3,
   );
-  return NextResponse.json({ data: matches, hasProfileText, optedIn });
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.max(1, Math.min(100, Math.floor(parsedLimit)))
+    : 3;
+  const ranked = matchingProfiles(viewer, data, data.length);
+  const matches = ranked.slice(0, limit).map((profile) =>
+    // Cards need the reasons, not every person's complete scraped text.
+    publicDirectoryProfile(
+      { ...profile, linkedin_about: null, linkedin_background: null },
+      true,
+    ),
+  );
+  return NextResponse.json({
+    data: matches,
+    total: ranked.length,
+    hasProfileText,
+    optedIn,
+  });
 }

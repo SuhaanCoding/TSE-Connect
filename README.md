@@ -10,9 +10,9 @@ Apply the SQL files in `supabase/migrations` in timestamp order before deploying
 
 ## Profiles and matching
 
-Members can save an optional plain-text bio (1,000 characters) and up to ten keywords (40 characters each) in Settings. Names, roles and company lookup continue to work. Directory search also ranks bio, keyword and LinkedIn background matches using TF-IDF cosine similarity. Personal recommendations compare the member's bio and keywords with other opted-in alumni and explain shared terms.
+Members can save an optional plain-text bio (1,000 characters) and up to ten keywords (40 characters each) in Settings. Names, roles and company lookup continue to work. Search and recommendations use field-weighted TF-IDF cosine similarity: explicit keywords and bios outweigh scraped background, specific phrases count, common words are discounted, repetition is capped, and domain acronyms (ML, RL, LLM, NLP, AI, UX/UI) map to canonical concepts. Personal recommendations compare the member's bio and keywords with other opted-in alumni, explain shared phrases and expand from three cards to all returned matches (up to 100).
 
-Matching runs on the server with the authenticated roster; no paid AI service receives profile text. This is word matching, not semantic embeddings: synonyms do not automatically match. Login metadata and contact visibility are sanitized before directory or recommendation responses reach the browser.
+Matching runs on the server with the authenticated roster; no paid AI service receives profile text. It uses curated domain equivalents and phrases, not semantic embeddings or unrestricted synonym inference. Shared contact addresses do not count as interests. Login metadata and contact visibility are sanitized; recommendation card responses omit the full scraped background.
 
 Company history and LinkedIn background are scraper-owned. A profile save preserves omitted fields and cannot overwrite current/past companies, scraped About text or scraped job/project descriptions. Members update LinkedIn and wait for a refresh to change that information. Existing elevated administrative tools retain their operational access.
 
@@ -28,11 +28,21 @@ Only visible, nonempty data is imported. Masked employers are discarded; incompl
 
 The existing admin Scrape tab starts manual runs and catches up completed callbacks. The existing scheduled endpoint uses the same adapter. Actor marketplace rules can change; pinned builds and pricing/output guards make those changes visible but cannot guarantee a provider will remain available.
 
+## Recovery and import receipts
+
+Apply `20261110090000_scrape_recovery.sql` before this release. Runs reserve a unique active database slot before actor start; import processing uses a five-minute lease and persisted phase receipts. The primary provider is followed by at most one automatic fallback for unresolved roster URLs, using `blueskyscraper/linkedin-profile-details-scraper` build `0.1.36`, verified Free pricing at $0.0032/profile and a $1 actor cap. Email enrichment is disabled. A lost/uncertain start is surfaced for review rather than automatically spending again.
+
+Requested and returned URLs are both matched. Stable numeric LinkedIn member IDs can link cross-provider aliases and recover canonical addresses; names alone never join records. Error rows, masks and identity-only results do not receive a fresh timestamp. Only visible, validated fields are written, and incomplete history never clears stored employers. Each input has a receipt showing provider, updated fields, roster IDs and any unresolved reason. History distinguishes partial from complete results and offers per-profile review and a manual retry of unresolved roster profiles. Direct browser roles cannot read operational receipts; admin APIs authenticate and use the service client.
+
+When `APIFY_WEBHOOK_SECRET` is configured, callbacks are attached atomically in the actor-start request ([Apify Run Actor documentation](https://docs.apify.com/api/v2/actors-runs-post)). Webhooks and the admin poller use the same processor. If callbacks are not configured, the admin page says so and must stay open to finish processing. Transient import failures keep the run resumable and release its lease. Duplicate callbacks cannot overwrite completed runs or start repeated fallback actors.
+
 ## Checks
 
 - `npm test` — keyword/bio validation, ownership protection, cosine ranking, recommendation privacy, scraper adapters and cost/truncation guards.
 - `npm run typecheck`
 - `npm run lint`
 - `npm run build`
+
+The test suite includes the actual import workflow with fake I/O boundaries: duplicate callbacks, overlapping run reservations, lease contention, transient read failures, foreign datasets and unconfirmed recovery starts. `tests/scrape-database-smoke.sql` verifies database reservation/lease/access rules in a rollback-only transaction; run it only when no real scrape is active.
 
 Browser QA covers Settings save/reload, failed-save recovery, read-only company fields, tag navigation, free-text search, recommendations, no-results/clear, keyboard focus and a 390px viewport using fictional profiles in an isolated copy. Supabase permissions, limits and search are also tested in transactions that roll back their test changes.

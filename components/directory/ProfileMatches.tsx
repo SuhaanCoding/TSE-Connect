@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Button from "@/components/ui/Button";
 import AlumniCard from "./AlumniCard";
 import type { Alumni } from "@/lib/types";
 
@@ -13,9 +14,10 @@ export default function ProfileMatches() {
   } | null>(null);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/alumni/matches", { signal: controller.signal })
+    fetch("/api/alumni/matches?limit=100", { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Matches unavailable");
         const data = await response.json();
@@ -32,14 +34,42 @@ export default function ProfileMatches() {
       aria-labelledby="matches-heading"
       aria-busy={!result && !error}
     >
-      <div>
-        <h2 id="matches-heading" className="font-heading font-semibold text-xl">
-          People with shared interests
-        </h2>
-        <p className="mt-1 text-sm text-text-muted">
-          Your bio and keywords matched with alumni bios and LinkedIn
-          backgrounds.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2
+            id="matches-heading"
+            className="font-heading font-semibold text-xl"
+          >
+            People with shared interests
+          </h2>
+          <p className="mt-1 text-sm text-text-muted">
+            Based on your bio and keywords, with more weight on specific shared
+            interests.
+          </p>
+        </div>
+        {result && result.data.length > 3 && !error && (
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-expanded={expanded}
+            aria-controls="profile-matches-list"
+            onClick={() => setExpanded((value) => !value)}
+          >
+            {expanded ? "Show less" : `Show all ${result.data.length} matches`}
+            <svg
+              aria-hidden="true"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className={expanded ? "rotate-180" : ""}
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </Button>
+        )}
       </div>
       {error ? (
         <div
@@ -69,15 +99,20 @@ export default function ProfileMatches() {
           Finding shared interests…
         </div>
       ) : result.data.length ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {result.data.map((profile, index) => (
-            <AlumniCard
-              key={profile.id}
-              alumni={profile}
-              index={index}
-              viewerOptedIn={result.optedIn}
-            />
-          ))}
+        <div
+          id="profile-matches-list"
+          className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+        >
+          {(expanded ? result.data : result.data.slice(0, 3)).map(
+            (profile, index) => (
+              <AlumniCard
+                key={profile.id}
+                alumni={profile}
+                index={index}
+                viewerOptedIn={result.optedIn}
+              />
+            ),
+          )}
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-surface p-5 text-sm text-text-secondary">
@@ -95,6 +130,12 @@ export default function ProfileMatches() {
             Edit your profile →
           </Link>
         </div>
+      )}
+      {result && result.data.length > 3 && !error && (
+        <p role="status" className="text-xs text-text-muted">
+          Showing {expanded ? result.data.length : 3} of {result.data.length}{" "}
+          matches
+        </p>
       )}
     </section>
   );

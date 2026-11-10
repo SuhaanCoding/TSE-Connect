@@ -6,7 +6,9 @@ import Button from "@/components/ui/Button";
 import Toast from "@/components/ui/Toast";
 import EditAlumniModal from "./EditAlumniModal";
 import AddAlumniModal from "./AddAlumniModal";
-import type { Alumni, OptStatus, ScrapeResult } from "@/lib/types";
+import type { Alumni, OptStatus } from "@/lib/types";
+import type { ScrapeOutcome } from "@/lib/linkedin-profile";
+import ScrapeRunDetails from "./ScrapeRunDetails";
 
 interface AdminEntry {
   id: string;
@@ -48,10 +50,15 @@ export default function AdminDashboard() {
     no_match: number;
     errors: number;
     error_message: string | null;
+    unresolved_count?: number;
+    recovery_run_id?: string | null;
+    profile_results?: ScrapeOutcome[];
   }
   const [scrapeRuns, setScrapeRuns] = useState<ScrapeRun[]>([]);
   const [scraping, setScraping] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [scrapeError, setScrapeError] = useState<string | null>(null);
+  const [callbacksReady, setCallbacksReady] = useState(true);
+  const [scrapeLoading, setScrapeLoading] = useState(true);
 
   // CSV import state
   const [importing, setImporting] = useState(false);
@@ -72,13 +79,6 @@ export default function AdminDashboard() {
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  // Clean up poll interval on unmount
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -387,19 +387,25 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (res.ok) {
         setScrapeRuns(data.runs || []);
+        setCallbacksReady(data.callbackConfigured !== false);
+        setScrapeError(null);
+      } else {
+        setScrapeError(data.error || "Couldn’t load scrape history. Try Refresh.");
       }
     } catch {
-      // Silently fail — not critical
+      setScrapeError("Couldn’t load scrape history. Check your connection and try Refresh.");
+    } finally {
+      setScrapeLoading(false);
     }
   }, []);
 
-  const startScrape = async (test = false) => {
+  const startScrape = async (test = false, retryFailedFrom?: string) => {
     setScraping(true);
     try {
       const res = await fetch("/api/admin/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ test }),
+        body: JSON.stringify({ test, retryFailedFrom }),
       });
       const data = await res.json();
 
@@ -409,13 +415,8 @@ export default function AdminDashboard() {
         return;
       }
 
-      setToast(`${test ? "Test scrape" : "Scrape"} started — ${data.profileCount} profiles. Results will process automatically.`);
+      setToast(data.warning || `${retryFailedFrom ? "Recovery" : test ? "Test scrape" : "Scrape"} started — ${data.profileCount} profiles. Results will process automatically.`);
       await fetchScrapeRuns();
-
-      // Poll scrape_runs table for status updates while a run is active
-      pollRef.current = setInterval(async () => {
-        await fetchScrapeRuns();
-      }, 15000);
     } catch {
       setToast("Failed to start scrape");
     } finally {
@@ -423,26 +424,19 @@ export default function AdminDashboard() {
     }
   };
 
-  // Stop polling when no runs are active
+  const hasRunningScrape = scrapeRuns.some((run) => run.status === "running");
+  // A single poller also resumes a run after navigating back or reloading.
   useEffect(() => {
-    const hasRunning = scrapeRuns.some((r) => r.status === "running");
-    if (!hasRunning && pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  }, [scrapeRuns]);
+    if (tab !== "scrape" || !hasRunningScrape) return;
+    const timer = setInterval(fetchScrapeRuns, 15000);
+    return () => clearInterval(timer);
+  }, [tab, hasRunningScrape, fetchScrapeRuns]);
 
   // Fetch scrape history when tab is selected
   useEffect(() => {
     if (tab === "scrape") {
       fetchScrapeRuns();
     }
-    return () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
   }, [tab, fetchScrapeRuns]);
 
   // Admin management
@@ -731,7 +725,7 @@ export default function AdminDashboard() {
             <div className="max-w-lg">
               <h2 className="font-heading font-semibold text-lg mb-2">LinkedIn Scrape</h2>
               <p className="text-sm text-text-muted mb-1">
-                Scrape LinkedIn profiles for all alumni with LinkedIn URLs. Visible career details will be refreshed automatically; hidden or missing details keep their existing values. Results are imported via webhook — you can close this tab safely.
+                Refresh visible LinkedIn details, then automatically retry unresolved profiles with a second provider. Hidden or missing fields keep their existing values. Per-profile results show exactly what was imported.
               </p>
               <p className="text-sm text-text-muted mb-1">
                 A scheduled scrape runs automatically on the <span className="text-accent font-medium">15th of every month</span>.
@@ -739,7 +733,7 @@ export default function AdminDashboard() {
               <p className="text-sm text-text-muted mb-4">
                 <span className="text-accent font-medium">{linkedinCount}</span> alumni with LinkedIn URLs.
                 {linkedinCount > 0 && (
-                  <span className="text-text-muted/60"> Estimated free-credit usage: ~${((linkedinCount / 1000) * 5).toFixed(2)} plus platform usage; $2 actor charge cap.</span>
+                  <span className="text-text-muted/60"> Estimated primary free-credit usage: ~${((linkedinCount / 1000) * 5).toFixed(2)} plus platform usage. Actor charge caps: $2 primary, $1 recovery.</span>
                 )}
               </p>
 
@@ -765,6 +759,9 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            {scrapeError && <p role="alert" className="text-sm text-red-400">{scrapeError}</p>}
+            {!callbacksReady && <p role="status" className="text-sm text-text-secondary">Automatic import callbacks are not configured. Keep this page open until processing finishes; Refresh can resume an interrupted import.</p>}
+
             {/* Scrape Run History */}
             {scrapeRuns.length > 0 && (
               <div>
@@ -780,6 +777,7 @@ export default function AdminDashboard() {
                         <th className="text-right px-3 py-2 font-medium text-text-muted">Matched</th>
                         <th className="text-right px-3 py-2 font-medium text-text-muted">Updated</th>
                         <th className="text-right px-3 py-2 font-medium text-text-muted">Errors</th>
+                        <th className="text-right px-3 py-2 font-medium text-text-muted">Unresolved</th>
                         <th className="text-left px-3 py-2 font-medium text-text-muted">Duration</th>
                       </tr>
                     </thead>
@@ -810,7 +808,7 @@ export default function AdminDashboard() {
                             </td>
                             <td className="px-3 py-2">
                               <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-                                run.status === "completed"
+                                run.status === "completed" && !run.unresolved_count
                                   ? "text-emerald-400"
                                   : run.status === "running"
                                     ? "text-accent"
@@ -819,7 +817,7 @@ export default function AdminDashboard() {
                                 {run.status === "running" && (
                                   <span className="h-2 w-2 rounded-full bg-accent animate-pulse" />
                                 )}
-                                {run.status}
+                                {run.status === "completed" && run.unresolved_count ? "partial" : run.status === "running" && run.recovery_run_id ? "recovering" : run.status}
                               </span>
                               {run.error_message && (
                                 <p className="text-[10px] text-red-400/70 mt-0.5 max-w-[200px] truncate" title={run.error_message}>
@@ -835,6 +833,7 @@ export default function AdminDashboard() {
                                 {run.errors || "—"}
                               </span>
                             </td>
+                            <td className="px-3 py-2 text-right text-text-secondary">{run.unresolved_count ?? "—"}</td>
                             <td className="px-3 py-2 text-text-muted">{durationStr}</td>
                           </tr>
                         );
@@ -842,10 +841,14 @@ export default function AdminDashboard() {
                     </tbody>
                   </table>
                 </div>
+                <div className="mt-4 space-y-3">
+                  {scrapeRuns.filter((run)=>run.profile_results?.length).slice(0,5).map((run)=><ScrapeRunDetails key={run.id} results={run.profile_results!} date={run.started_at} busy={scraping || hasRunningScrape} onRetry={()=>{void startScrape(false,run.id);}} />)}
+                </div>
               </div>
             )}
 
-            {scrapeRuns.length === 0 && (
+            {scrapeLoading && <p role="status" className="text-sm text-text-muted">Loading scrape history…</p>}
+            {!scrapeLoading && !scrapeError && scrapeRuns.length === 0 && (
               <p className="text-sm text-text-muted">No scrape runs yet.</p>
             )}
           </div>
