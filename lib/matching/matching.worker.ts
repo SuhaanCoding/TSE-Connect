@@ -169,7 +169,7 @@ channel.onmessage = (event) => {
           warning =
             "The meaning-based model couldn’t load. Using private on-device word matching instead.";
         }
-      if (!documents.some((doc) => doc.vector.length))
+      if (!message.lexicalOnly && !documents.some((doc) => doc.vector.length))
         warning =
           "The alumni index is being prepared. Using private word matching for now; refresh the network in a moment.";
       channel.postMessage({

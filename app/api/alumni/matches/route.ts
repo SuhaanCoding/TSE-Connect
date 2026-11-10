@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { directoryCorpus, publicDirectoryProfile } from "@/lib/directory";
 import { profileTokens } from "@/lib/profile-matching";
 import { cleanMatchText, profileDocuments } from "@/lib/matching/documents";
+import { ENCODER } from "@/lib/matching/config";
+import { indexPage } from "@/lib/matching/page.server";
 import { scheduleMatchingRefresh } from "@/lib/matching/schedule.server";
 export const maxDuration = 300;
 import {
@@ -54,7 +56,30 @@ export async function GET(request: Request) {
       "@/lib/matching/cache.server"
     );
     try {
-      const index = await indexForVisibleProfiles(pool);
+      const wordsOnly = params.get("lexical") === "1";
+      const index = wordsOnly
+        ? {
+            documents: pool
+              .flatMap(profileDocuments)
+              .map((doc) => ({ ...doc, vector: "" })),
+            ready: 0,
+            modelVersion: ENCODER.version,
+            indexUpdatedAt: null,
+          }
+        : await indexForVisibleProfiles(pool);
+      const paged = params.get("format") === "paged-v1";
+      const offset = Number(params.get("offset") || 0);
+      const chunk = paged
+        ? indexPage(index.documents, offset, params.get("revision"))
+        : null;
+      if (chunk && "error" in chunk)
+        return NextResponse.json(
+          { error: chunk.error },
+          {
+            status: chunk.status,
+            headers: { "Cache-Control": "private, no-store" },
+          },
+        );
       const cachedIds = new Set(
         index.documents.filter((doc) => doc.vector).map((doc) => doc.profileId),
       );
@@ -65,12 +90,16 @@ export async function GET(request: Request) {
         )
         .slice(0, 20)
         .map((profile) => profile.id);
-      if (missing.length) scheduleMatchingRefresh(missing);
-      const all = networkRanking(
-        viewer,
-        pool,
-        parseNetworkFilters(new URLSearchParams()),
-      );
+      if (!wordsOnly && offset === 0 && missing.length)
+        scheduleMatchingRefresh(missing);
+      const all =
+        paged && offset > 0
+          ? []
+          : networkRanking(
+              viewer,
+              pool,
+              parseNetworkFilters(new URLSearchParams()),
+            );
       return NextResponse.json(
         {
           data: all.map((profile) =>
@@ -79,7 +108,8 @@ export async function GET(request: Request) {
               viewer.opt_status === "opted_in",
             ),
           ),
-          documents: index.documents,
+          documents: chunk ? chunk.documents : index.documents,
+          ...(chunk || {}),
           total: all.length,
           poolCount: all.length,
           viewer: {

@@ -42,56 +42,77 @@ export class LocalMatchClient {
   constructor(progress: (message: string) => void, lexicalOnly = false) {
     this.start = (async () => {
       progress("Preparing the alumni index…");
-      const response = await fetch("/api/alumni/matches?mode=semantic", {
-        cache: "no-store",
-        signal: AbortSignal.any([
-          this.controller.signal,
-          AbortSignal.timeout(25000),
-        ]),
+      const query = new URLSearchParams({
+        mode: "semantic",
+        format: "paged-v1",
       });
-      const body = await response.text();
-      let index;
-      try {
-        index = JSON.parse(body);
-      } catch {
-        // Operational metadata only: never log an index body, resume or goal.
-        console.warn(
-          "TSE matching index decode failed",
-          JSON.stringify({
-            status: response.status,
-            characters: body.length,
-            contentType: response.headers.get("content-type"),
-          }),
+      if (lexicalOnly) query.set("lexical", "1");
+      const download = async (offset = 0, revision?: string) => {
+        const params = new URLSearchParams(query);
+        if (offset) params.set("offset", String(offset));
+        if (revision) params.set("revision", revision);
+        const response = await fetch(`/api/alumni/matches?${params}`, {
+          cache: "no-store",
+          signal: AbortSignal.any([
+            this.controller.signal,
+            AbortSignal.timeout(60000),
+          ]),
+        });
+        let page;
+        try {
+          page = await response.json();
+        } catch (error) {
+          if (this.controller.signal.aborted)
+            throw new DOMException("Cancelled", "AbortError");
+          console.warn(
+            "TSE matching index download failed",
+            JSON.stringify({
+              status: response.status,
+              error: error instanceof Error ? error.name : "unknown",
+            }),
+          );
+          throw new Error(
+            "Couldn’t finish downloading the alumni index. Try again or use private word matching.",
+          );
+        }
+        if (!response.ok || !page || !Array.isArray(page.documents))
+          throw new Error(
+            page?.error || "Couldn’t load the alumni index. Try again.",
+          );
+        return page;
+      };
+      const index = await download();
+      if (!Array.isArray(index.data))
+        throw new Error("Couldn’t load the alumni index. Try again.");
+      let next = index.nextOffset;
+      const seen = new Set<number>();
+      while (next !== null && next !== undefined) {
+        if (!Number.isSafeInteger(next) || next <= 0 || seen.has(next))
+          throw new Error(
+            "Couldn’t finish loading the index. Refresh the network.",
+          );
+        seen.add(next);
+        progress(
+          `Loading alumni background · ${index.documents.length} of ${index.documentsTotal} passages`,
         );
-        throw new Error("Couldn’t read the alumni index download. Try again.");
+        const page = await download(next, index.revision);
+        if (
+          page.revision !== index.revision ||
+          page.modelVersion !== index.modelVersion
+        )
+          throw new Error(
+            "The matching index changed. Refresh the network and try again.",
+          );
+        index.documents.push(...page.documents);
+        next = page.nextOffset;
       }
       if (
-        !response.ok ||
-        !index ||
-        !Array.isArray(index.documents) ||
-        !Array.isArray(index.data)
-      ) {
-        console.warn(
-          "TSE matching index shape rejected",
-          JSON.stringify({
-            status: response.status,
-            characters: body.length,
-            keys:
-              index && typeof index === "object"
-                ? Object.keys(index).slice(0, 12)
-                : [],
-            documents: Array.isArray(index?.documents)
-              ? index.documents.length
-              : typeof index?.documents,
-            profiles: Array.isArray(index?.data)
-              ? index.data.length
-              : typeof index?.data,
-          }),
-        );
+        index.documentsTotal !== undefined &&
+        index.documents.length !== index.documentsTotal
+      )
         throw new Error(
-          index?.error || "Couldn’t load the alumni index. Try again.",
+          "Couldn’t finish loading the index. Refresh the network.",
         );
-      }
       if (index.modelVersion !== ENCODER.version)
         throw new Error(
           "The matching model changed. Reload this page to get the latest version.",
@@ -145,7 +166,7 @@ export class LocalMatchClient {
           documents: index.documents,
           lexicalOnly,
         },
-        120000,
+        600000,
       );
       if (process.env.NODE_ENV === "development")
         console.info(

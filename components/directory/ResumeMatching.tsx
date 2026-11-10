@@ -7,6 +7,8 @@ import { readResume } from "@/lib/matching/resume";
 interface Props {
   enabled: boolean;
   busy: boolean;
+  failed: boolean;
+  wordOnly: boolean;
   progress: string;
   warning: string;
   activeResume: boolean;
@@ -136,6 +138,11 @@ export default function ResumeMatching(props: Props) {
               >
                 Refresh network
               </Button>
+              {props.wordOnly && !props.busy && (
+                <Button variant="secondary" size="sm" onClick={props.onEnable}>
+                  Try deeper matching
+                </Button>
+              )}
               <Button variant="ghost" size="sm" onClick={props.onDisable}>
                 Standard matching
               </Button>
@@ -150,7 +157,8 @@ export default function ResumeMatching(props: Props) {
       {!props.enabled && (
         <p className="mt-2 text-xs text-text-muted">
           Deeper matching downloads about 55 MB on first use and caches the
-          model when your browser allows it.
+          model when your browser allows it. On a slow connection, switch to
+          private word matching for a smaller download.
         </p>
       )}
       {props.enabled && (
@@ -170,7 +178,7 @@ export default function ResumeMatching(props: Props) {
           {props.warning}
         </p>
       )}
-      {props.enabled && props.busy && (
+      {props.enabled && (props.busy || props.failed) && (
         <Button
           className="mt-2"
           variant="ghost"

@@ -426,6 +426,8 @@ export default function NetworkExplorer({
         )}
       </section>
       <ResumeMatching
+        wordOnly={result?.engine === "lexical"}
+        failed={!!error}
         enabled={localEnabled}
         busy={pending}
         progress={localProgress}
@@ -465,8 +467,10 @@ export default function NetworkExplorer({
           {result.engine === "semantic"
             ? "Meaning + word matching"
             : "Private word matching"}{" "}
-          · {result.semanticReady ?? 0} of {result.poolCount} people have
-          prepared background text. Missing profiles remain in the ranking.
+          ·{" "}
+          {result.engine === "semantic"
+            ? `${result.semanticReady ?? 0} of ${result.poolCount} people have prepared background text. Missing profiles remain in the ranking.`
+            : "No model download needed. Everyone remains in the ranking."}
         </p>
       )}
       <SearchBar
