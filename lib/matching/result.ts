@@ -65,10 +65,17 @@ export function localMatchResult(
         reasons.push(
           `${engine === "semantic" && hit.semanticScore > 0 ? "Related" : "Matching"} ${e.source === "role" ? "career information" : e.source === "bio" ? "member bio" : e.source === "keywords" ? "member interests" : e.source === "background" ? "LinkedIn work/project text" : `LinkedIn ${e.source}`} · ${e.label}`,
         );
-      if (e)
+      if (e) {
+        // The source heading is already above the quote. Keep the excerpt a
+        // verbatim substring while avoiding duplicated work/project headings.
+        let quote = e.text;
+        for (let i = 0; i < 2 && quote.startsWith(e.label + " "); i++)
+          quote = quote.slice(e.label.length + 1);
+        quote = quote || e.text;
         reasons.push(
-          `“${e.text.slice(0, 190)}${e.text.length > 190 ? "…" : ""}”`,
+          `“${quote.slice(0, 190)}${quote.length > 190 ? "…" : ""}”`,
         );
+      }
       if (!e)
         reasons.push(
           "Limited text; explore their background before reaching out.",
