@@ -74,7 +74,7 @@ const AlumniCard = memo(function AlumniCard({
   return (
     <Card
       hoverable
-      className="animate-fade-in-up group h-full flex flex-col"
+      className="animate-fade-in-up group h-full min-w-0 flex flex-col"
       style={{ animationDelay: `${index * 50}ms` }}
     >
       {ranking && (
@@ -89,7 +89,7 @@ const AlumniCard = memo(function AlumniCard({
       )}
       <Link
         href={`/profile/${alumni.id}`}
-        className="block space-y-3 flex-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="block min-w-0 space-y-3 flex-1 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <div className="flex items-start gap-3">
           <Avatar name={alumni.full_name} src={alumni.avatar_url} size="md" />
@@ -143,7 +143,7 @@ const AlumniCard = memo(function AlumniCard({
           </p>
         ) : null}
         {ranking && (
-          <ul className="space-y-1 text-xs leading-relaxed text-text-secondary">
+          <ul className="space-y-1 break-words text-xs leading-relaxed text-text-secondary">
             {ranking.reasons.slice(0, 3).map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
@@ -156,7 +156,7 @@ const AlumniCard = memo(function AlumniCard({
               <Badge
                 key={company}
                 variant="neutral"
-                className="text-[10px] px-1.5 py-0.5"
+                className="max-w-full break-words text-[10px] px-1.5 py-0.5"
               >
                 {company}
               </Badge>

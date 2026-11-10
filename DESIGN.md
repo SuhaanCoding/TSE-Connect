@@ -75,7 +75,7 @@ Buttons and navigation links share `buttonStyles.ts`; navigation renders anchors
 - Keep bios as plain text. Do not add rich text, paid AI calls or new profile visibility rules.
 - Don't manually overwrite LinkedIn company history through member profile saves.
 
-Bio and matching extension: About You uses an auto-growing plain-text textarea and the existing keyword field. Profile biographies retain paragraph breaks. LinkedIn About, job descriptions and project descriptions live in a separate native disclosure with a source label. Directory cards show a two-line member bio excerpt.
+Bio and matching extension: About You uses an auto-growing plain-text textarea and the existing keyword field. Profile biographies retain paragraph breaks. LinkedIn About, job descriptions and project descriptions live in a separate native disclosure with a source label. Directory cards show a two-line member bio excerpt. Cards can shrink within narrow grid columns; long company tags and ranking evidence wrap inside the card instead of widening the page.
 
 Ranked discovery is the default directory view, with Browse directory retained as a sibling navigation link. The user requested ranking everyone rather than a positive-match-only preview. Its signature is the honest ordinal rank on the existing AlumniCard, with short evidence lines and exploratory labels for weak matches. No percentage scores or new decorative palette. Company-category chips use existing rounded tags and show their pool count. Filters retain native platform-owned selects, including long company options. Category membership is an explicitly approximate employer-name classification.
 
