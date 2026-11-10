@@ -1,5 +1,16 @@
 import type { NextConfig } from "next";
 
+// Transformers loads ONNX through createRequire, which deployment tracing cannot infer.
+const matchingServerFiles = [
+  "./public/models/minilm-l6-v2-q8/**/*",
+  "./node_modules/onnxruntime-node/package.json",
+  "./node_modules/onnxruntime-node/dist/**/*",
+  "./node_modules/onnxruntime-common/package.json",
+  "./node_modules/onnxruntime-common/dist/**/*",
+  "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/onnxruntime_binding.node",
+  "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime.so.1",
+];
+
 const nextConfig: NextConfig = {
   serverExternalPackages: [
     "@huggingface/transformers",
@@ -7,21 +18,9 @@ const nextConfig: NextConfig = {
     "sharp",
   ],
   outputFileTracingIncludes: {
-    "/api/alumni": [
-      "./public/models/minilm-l6-v2-q8/**/*",
-      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/onnxruntime_binding.node",
-      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime.so.1",
-    ],
-    "/api/alumni/matches": [
-      "./public/models/minilm-l6-v2-q8/**/*",
-      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/onnxruntime_binding.node",
-      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime.so.1",
-    ],
-    "/api/admin/scrape/webhook": [
-      "./public/models/minilm-l6-v2-q8/**/*",
-      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/onnxruntime_binding.node",
-      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime.so.1",
-    ],
+    "/api/alumni": matchingServerFiles,
+    "/api/alumni/matches": matchingServerFiles,
+    "/api/admin/scrape/webhook": matchingServerFiles,
   },
   // CPU inference needs no CUDA/TensorRT providers, including cached build dependencies.
   outputFileTracingExcludes: {

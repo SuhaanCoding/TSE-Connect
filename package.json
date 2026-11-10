@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "prebuild": "node scripts/matching/prepare-assets.mjs",
     "benchmark:matching": "node --experimental-strip-types --import ./tests/register.mjs scripts/matching/benchmark.mjs",
-    "matching:refresh": "node --env-file=.env.local --experimental-strip-types --import ./tests/register.mjs scripts/matching/refresh-index.mjs"
+    "matching:refresh": "node --env-file=.env.local --experimental-strip-types --import ./tests/register.mjs scripts/matching/refresh-index.mjs",
+    "postbuild": "node scripts/matching/verify-server-bundle.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.2",

@@ -111,9 +111,9 @@ export async function POST(request: Request) {
         return indexForVisibleProfiles(profiles);
       },
       encode: async (documents) => {
-        let module;
+        let encoderModule;
         try {
-          module = await import("@/lib/matching/encoder.server");
+          encoderModule = await import("@/lib/matching/encoder.server");
         } catch (error) {
           // Module setup has no access to the query. Only dependency/path errors are logged.
           console.warn(
@@ -124,7 +124,7 @@ export async function POST(request: Request) {
           );
           throw error;
         }
-        return module.encodeDocuments(documents);
+        return encoderModule.encodeDocuments(documents);
       },
     });
     return respond(result);
