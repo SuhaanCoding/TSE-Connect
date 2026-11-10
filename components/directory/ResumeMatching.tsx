@@ -153,15 +153,10 @@ export default function ResumeMatching(props: Props) {
           )}
         </div>
       </div>
-      {!props.enabled && (
-        <p className="mt-2 text-xs text-text-muted">
-          First use downloads ~55 MB.
-        </p>
-      )}
       {props.enabled && (props.busy || !props.failed) && (
         <p role="status" className="mt-3 text-xs text-accent-light">
           {props.busy
-            ? props.progress || "Matching on your device…"
+            ? props.progress || "Finding your matches…"
             : props.activeResume
               ? "Your experience is applied."
               : "Using your profile."}
@@ -182,7 +177,7 @@ export default function ResumeMatching(props: Props) {
           size="sm"
           onClick={props.onLexical}
         >
-          Use private word matching
+          Use word matching
         </Button>
       )}
       <details
@@ -195,8 +190,7 @@ export default function ResumeMatching(props: Props) {
         </summary>
         <div className="mt-4 space-y-4">
           <p className="text-xs leading-relaxed text-text-muted">
-            Your resume and goal stay on this device and are cleared when you
-            leave.
+            Used for matching. Not saved to your profile.
           </p>
           <div>
             <label

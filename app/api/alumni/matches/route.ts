@@ -6,7 +6,13 @@ import { cleanMatchText, profileDocuments } from "@/lib/matching/documents";
 import { ENCODER } from "@/lib/matching/config";
 import { indexPage } from "@/lib/matching/page.server";
 import { scheduleMatchingRefresh } from "@/lib/matching/schedule.server";
+import {
+  matchingOriginAllowed,
+  parseMatchInput,
+  serverMatch,
+} from "@/lib/matching/server";
 export const maxDuration = 300;
+export const runtime = "nodejs";
 import {
   networkRanking,
   parseNetworkFilters,
@@ -15,6 +21,115 @@ import {
   companySignals,
   COMPANY_CATEGORIES,
 } from "@/lib/network";
+
+const activeMatching = new Set<string>();
+const privateHeaders = { "Cache-Control": "private, no-store" };
+export async function POST(request: Request) {
+  const respond = (body: unknown, status = 200) =>
+    NextResponse.json(body, { status, headers: privateHeaders });
+  if (!matchingOriginAllowed(request))
+    return respond({ error: "Open matching from TSE Connect." }, 403);
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return respond({ error: "Sign in again to load your network." }, 401);
+  const { data: viewer, error: viewerError } = await supabase
+    .from("alumni")
+    .select("*")
+    .eq("auth_id", user.id)
+    .maybeSingle();
+  if (viewerError)
+    return respond({ error: "Couldn’t load your profile. Try again." }, 500);
+  if (!viewer || viewer.opt_status === "not_confirmed")
+    return respond(
+      { error: "Complete your profile to explore the network." },
+      403,
+    );
+  if (!request.headers.get("content-type")?.startsWith("application/json"))
+    return respond({ error: "Choose a valid matching request." }, 415);
+  let input;
+  try {
+    // Bound bytes before JSON parsing, including requests without Content-Length.
+    const reader = request.body?.getReader();
+    if (!reader)
+      return respond({ error: "Choose experience or a goal to match." }, 400);
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        size += chunk.value.byteLength;
+        if (size > 256 * 1024) {
+          await reader.cancel();
+          return respond({ error: "Use 30,000 characters or fewer." }, 413);
+        }
+        chunks.push(chunk.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    input = parseMatchInput(
+      JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)),
+    );
+  } catch {
+    return respond(
+      {
+        error:
+          "Check your experience (30,000 characters maximum), goal (600), and search (200).",
+      },
+      400,
+    );
+  }
+  // Bound CPU admission per warm instance. No resume or query is shared between requests.
+  if (activeMatching.size >= 2 || activeMatching.has(user.id))
+    return NextResponse.json(
+      { error: "Matching is busy. Try again in a moment." },
+      { status: 429, headers: { ...privateHeaders, "Retry-After": "2" } },
+    );
+  activeMatching.add(user.id);
+  try {
+    const { data, error } = await directoryCorpus(supabase);
+    if (error)
+      return respond({ error: "Couldn’t load your network. Try again." }, 500);
+    if (request.signal.aborted)
+      return respond({ error: "Matching cancelled." }, 499);
+    const pool = uniqueNetworkProfiles(viewer, data);
+    const result = await serverMatch(viewer, pool, input, {
+      loadIndex: async (profiles) => {
+        const { indexForVisibleProfiles } = await import(
+          "@/lib/matching/cache.server"
+        );
+        return indexForVisibleProfiles(profiles);
+      },
+      encode: async (documents) => {
+        const { encodeDocuments } = await import(
+          "@/lib/matching/encoder.server"
+        );
+        return encodeDocuments(documents);
+      },
+    });
+    return respond(result);
+  } catch {
+    // Never log a request body, private text or an inference error containing input.
+    return respond(
+      {
+        error: "Couldn’t finish matching. Try again or use standard matching.",
+      },
+      503,
+    );
+  } finally {
+    activeMatching.delete(user.id);
+  }
+}
 
 export async function GET(request: Request) {
   const supabase = await createClient();

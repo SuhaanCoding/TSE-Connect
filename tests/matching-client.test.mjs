@@ -1,128 +1,100 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LocalMatchClient } from "../lib/matching/client.ts";
-import { ENCODER } from "../lib/matching/config.ts";
-test("resume and goals cross only the worker boundary; network fetch has no private input", async () => {
-  const originalFetch = globalThis.fetch,
-    originalWorker = globalThis.Worker;
-  const requests = [],
-    messages = [];
-  let terminated = false;
+import { ServerMatchClient } from "../lib/matching/client.ts";
+const result = {
+  index: { data: [], viewer: { context: "" } },
+  hits: [],
+  engine: "semantic",
+  warning: "",
+};
+test("server matching posts private inputs without URL/storage/model downloads and reuses tab-only results", async () => {
+  const previous = globalThis.fetch,
+    requests = [];
   globalThis.fetch = async (url, options) => {
     requests.push({ url, options });
-    return Response.json({
-      modelVersion: ENCODER.version,
-      data: [],
-      documents: [],
-      viewer: { context: "Existing profile context" },
-    });
+    return Response.json(result);
   };
-  globalThis.Worker = class {
-    postMessage(message) {
-      messages.push(message);
-      queueMicrotask(() =>
-        this.onmessage({
-          data: {
-            id: message.id,
-            type: message.type === "init" ? "ready" : "result",
-            engine: "lexical",
-            hits: [],
-          },
-        }),
-      );
-    }
-    terminate() {
-      terminated = true;
-    }
-  };
-  let client;
+  const client = new ServerMatchClient(() => {});
   try {
-    client = new LocalMatchClient(() => {}, true);
-    await client.rank(
-      "PRIVATE RESUME EXPERIENCE",
-      "PRIVATE CAREER GOAL",
-      "",
-      new AbortController().signal,
-    );
-    await client.rank("", "Find peers", "", new AbortController().signal);
+    const signal = new AbortController().signal;
+    await client.rank("PRIVATE EXPERIENCE", "PRIVATE GOAL", "systems", signal);
+    await client.rank("PRIVATE EXPERIENCE", "PRIVATE GOAL", "systems", signal);
     assert.equal(requests.length, 1);
-    assert.equal(
-      requests[0].url,
-      "/api/alumni/matches?mode=semantic&format=paged-v1&lexical=1",
-    );
-    assert.equal(requests[0].options.body, undefined);
+    assert.equal(requests[0].url, "/api/alumni/matches");
+    assert.equal(requests[0].options.method, "POST");
     assert.equal(requests[0].options.cache, "no-store");
-    assert.doesNotMatch(JSON.stringify(requests), /PRIVATE/);
-    assert.equal(messages[1].text, "PRIVATE RESUME EXPERIENCE");
-    assert.equal(messages[2].text, "Existing profile context");
-    const controller = new AbortController();
-    controller.abort();
-    await assert.rejects(client.rank("late", "goal", "", controller.signal), {
+    assert.deepEqual(JSON.parse(requests[0].options.body), {
+      text: "PRIVATE EXPERIENCE",
+      goal: "PRIVATE GOAL",
+      lookup: "systems",
+      lexicalOnly: false,
+    });
+    client.dispose();
+    await client.rank("PRIVATE EXPERIENCE", "PRIVATE GOAL", "systems", signal);
+    assert.equal(requests.length, 2);
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await assert.rejects(client.rank("late", "goal", "", cancelled.signal), {
       name: "AbortError",
     });
-    assert.equal(messages.length, 3);
-    client.dispose();
-    assert.equal(terminated, true);
-    assert.equal(requests[0].options.signal.aborted, true);
+    assert.equal(requests.length, 2);
   } finally {
-    client?.dispose();
-    globalThis.fetch = originalFetch;
-    globalThis.Worker = originalWorker;
+    client.dispose();
+    globalThis.fetch = previous;
   }
 });
-
-test("paged downloads assemble completely before ranking without sending private context", async () => {
-  const previousFetch = globalThis.fetch,
-    previousWorker = globalThis.Worker,
-    requests = [],
-    messages = [];
-  globalThis.fetch = async (url) => {
-    requests.push(url);
-    const offset = new URL(url, "https://test.invalid").searchParams.get(
-      "offset",
+test("identical in-flight contexts share one request and removal aborts the request", async () => {
+  const previous = globalThis.fetch;
+  let requests = 0,
+    captured;
+  globalThis.fetch = async (_url, options) => {
+    requests++;
+    captured = options.signal;
+    return new Promise((_resolve, reject) =>
+      options.signal.addEventListener(
+        "abort",
+        () => reject(new DOMException("Cancelled", "AbortError")),
+        { once: true },
+      ),
     );
-    return Response.json({
-      data: [],
-      documents: [{ id: offset ? "second" : "first" }],
-      modelVersion: ENCODER.version,
-      viewer: { context: "" },
-      revision: "fixed-revision",
-      documentsTotal: 2,
-      nextOffset: offset ? null : 1,
-    });
   };
-  globalThis.Worker = class {
-    postMessage(message) {
-      messages.push(message);
-      queueMicrotask(() =>
-        this.onmessage({
-          data: {
-            id: message.id,
-            type: message.type === "init" ? "ready" : "result",
-            engine: "lexical",
-            hits: [],
-          },
-        }),
-      );
-    }
-    terminate() {}
-  };
-  let client;
+  const client = new ServerMatchClient(() => {});
   try {
-    client = new LocalMatchClient(() => {});
-    await client.rank(
-      "private resume",
-      "private goal",
-      "",
-      new AbortController().signal,
-    );
-    assert.equal(requests.length, 2);
-    assert.match(requests[1], /offset=1&revision=fixed-revision/);
-    assert.doesNotMatch(requests.join(" "), /private/);
-    assert.equal(messages[0].documents.length, 2);
+    const signal = new AbortController().signal;
+    const a = client.rank("private", "goal", "", signal),
+      b = client.rank("private", "goal", "", signal);
+    assert.equal(requests, 1);
+    client.dispose();
+    assert.equal(captured.aborted, true);
+    await assert.rejects(a, { name: "AbortError" });
+    await assert.rejects(b, { name: "AbortError" });
   } finally {
-    client?.dispose();
-    globalThis.fetch = previousFetch;
-    globalThis.Worker = previousWorker;
+    client.dispose();
+    globalThis.fetch = previous;
+  }
+});
+test("failed server requests are retryable and explicit word matching is honored", async () => {
+  const previous = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async (_url, options) => {
+    requests++;
+    assert.equal(JSON.parse(options.body).lexicalOnly, true);
+    return requests === 1
+      ? Response.json({ error: "Couldn’t finish matching." }, { status: 503 })
+      : Response.json({ ...result, engine: "lexical" });
+  };
+  const client = new ServerMatchClient(() => {}, true);
+  try {
+    const signal = new AbortController().signal;
+    await assert.rejects(
+      client.rank("private", "goal", "", signal),
+      /Couldn’t finish/,
+    );
+    const next = await client.rank("private", "goal", "", signal);
+    assert.equal(next.engine, "lexical");
+    assert.equal(requests, 2);
+  } finally {
+    client.dispose();
+    globalThis.fetch = previous;
   }
 });

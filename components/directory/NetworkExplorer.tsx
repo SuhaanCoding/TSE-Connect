@@ -6,7 +6,7 @@ import Link from "next/link";
 import AlumniCard from "./AlumniCard";
 import SearchBar from "./SearchBar";
 import ResumeMatching from "./ResumeMatching";
-import { LocalMatchClient } from "@/lib/matching/client";
+import { ServerMatchClient } from "@/lib/matching/client";
 import { localMatchResult } from "@/lib/matching/result";
 import Button from "@/components/ui/Button";
 import {
@@ -68,7 +68,7 @@ export default function NetworkExplorer({
   const [localProgress, setLocalProgress] = useState("");
   const [localWarning, setLocalWarning] = useState("");
   const [lexicalOnly, setLexicalOnly] = useState(false);
-  const matcher = useRef<LocalMatchClient | null>(null);
+  const matcher = useRef<ServerMatchClient | null>(null);
   useEffect(() => () => matcher.current?.dispose(), []);
   const restartLocal = (wordsOnly = false) => {
     matcher.current?.dispose();
@@ -141,7 +141,7 @@ export default function NetworkExplorer({
       try {
         let json: Result;
         if (localEnabled) {
-          const engine = (matcher.current ??= new LocalMatchClient(
+          const engine = (matcher.current ??= new ServerMatchClient(
             setLocalProgress,
             lexicalOnly,
           ));
