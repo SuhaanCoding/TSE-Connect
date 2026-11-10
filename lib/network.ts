@@ -76,6 +76,13 @@ export function uniqueNetworkProfiles(
   profiles: Alumni[],
 ): Alumni[] {
   const ownUrl = normalizeLinkedInUrl(viewer.linkedin_url || "");
+  const nameKey = (name: string) =>
+    name.normalize("NFKC").toLowerCase().trim().replace(/\s+/g, " ");
+  const historyKey = (profile: Alumni) =>
+    [...(profile.past_companies || [])].map(normalized).sort().join("\n");
+  const linked = profiles.filter((profile) =>
+    normalizeLinkedInUrl(profile.linkedin_url || ""),
+  );
   const groups = new Map<string, Alumni>();
   const quality = (profile: Alumni) =>
     (profile.opt_status === "opted_in" ? 100 : 0) +
@@ -85,6 +92,39 @@ export function uniqueNetworkProfiles(
   for (const profile of profiles) {
     const url = normalizeLinkedInUrl(profile.linkedin_url || "");
     if (profile.id === viewer.id || (ownUrl && url === ownUrl)) continue;
+    // Suppress an unclaimed sheet placeholder only with a unique linked identity
+    // and an identical substantive career history. A name alone never suffices.
+    if (
+      !url &&
+      !profile.auth_id &&
+      profile.opt_status === "not_confirmed" &&
+      !profile.bio?.trim() &&
+      !(profile.keywords || []).length &&
+      profile.current_role &&
+      profile.current_company &&
+      (profile.past_companies || []).length >= 3
+    ) {
+      const aliases = linked.filter(
+        (other) =>
+          nameKey(other.full_name) === nameKey(profile.full_name) &&
+          other.current_role?.trim().toLowerCase() ===
+            profile.current_role?.trim().toLowerCase() &&
+          normalized(other.current_company || "") ===
+            normalized(profile.current_company || "") &&
+          historyKey(other) === historyKey(profile) &&
+          (!profile.graduation_year ||
+            !other.graduation_year ||
+            profile.graduation_year === other.graduation_year),
+      );
+      if (
+        new Set(
+          aliases.map((other) =>
+            normalizeLinkedInUrl(other.linkedin_url || ""),
+          ),
+        ).size === 1
+      )
+        continue;
+    }
     const key = url || profile.id;
     const prior = groups.get(key);
     if (!prior || quality(profile) > quality(prior)) groups.set(key, profile);

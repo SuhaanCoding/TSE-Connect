@@ -145,6 +145,7 @@ function rank<T extends MatchableProfile>(
   profiles: T[],
   fields: (profile: T) => Field[],
   personal: boolean,
+  minimumScore = 0.03,
 ) {
   const documents = profiles.map((profile) =>
     fields(profile).map((field) => ({
@@ -217,7 +218,8 @@ function rank<T extends MatchableProfile>(
     );
     return {
       ...profile,
-      match_score: personal && (!meaningful.length || score < 0.03) ? 0 : score,
+      match_score:
+        personal && (!meaningful.length || score < minimumScore) ? 0 : score,
       shared_terms: reasons,
     };
   });
@@ -345,6 +347,7 @@ export function rankAllProfiles<T extends MatchableProfile>(
         : []),
     ],
     true,
+    0,
   )
     .map((profile) => ({
       ...profile,

@@ -235,3 +235,83 @@ test("ambiguous brand names do not classify unrelated companies", () => {
     "fintech",
   );
 });
+
+test("sheet placeholders require a unique full career identity; names alone never merge people", () => {
+  const linked = person("linked", {
+    full_name: "Uma Naik",
+    current_company: "Example Inc.",
+    current_role: "Product Manager",
+    past_companies: ["Employer A", "Employer B", "Employer C"],
+    graduation_year: "2024",
+  });
+  const placeholder = person("sheet", {
+    ...linked,
+    id: "sheet",
+    full_name: "Uma  Naik",
+    linkedin_url: null,
+    graduation_year: null,
+  });
+  assert.equal(networkRanking(me, [linked, placeholder], defaults()).length, 1);
+  for (const extra of [
+    { auth_id: "claimed" },
+    { bio: "My own interests" },
+    { keywords: ["Design"] },
+    { graduation_year: "2023" },
+    { current_role: "Other role" },
+    { past_companies: ["Different", "History", "Here"] },
+  ])
+    assert.equal(
+      networkRanking(me, [linked, { ...placeholder, ...extra }], defaults())
+        .length,
+      2,
+    );
+  assert.equal(
+    networkRanking(
+      me,
+      [
+        linked,
+        placeholder,
+        {
+          ...linked,
+          id: "second",
+          linkedin_url: "https://linkedin.com/in/different-person",
+        },
+      ],
+      defaults(),
+    ).length,
+    3,
+  );
+  assert.equal(
+    networkRanking(
+      { ...linked, id: "viewer" },
+      [linked, placeholder],
+      defaults(),
+    ).length,
+    0,
+  );
+});
+
+test("small meaningful overlaps keep their ranking instead of being flattened into zero ties", () => {
+  const alphabetic = (index) => {
+    let value = index,
+      result = "";
+    do {
+      result = String.fromCharCode(97 + (value % 26)) + result;
+      value = Math.floor(value / 26);
+    } while (value);
+    return `topic${result}`;
+  };
+  const text = [
+    "Databases",
+    ...Array.from({ length: 3000 }, (_, index) => alphabetic(index)),
+  ].join(" ");
+  const viewer = person("viewer", { bio: "Databases", opt_status: "opted_in" });
+  const rows = networkRanking(
+    viewer,
+    [person("weak", { bio: text }), person("zero")],
+    defaults(),
+  );
+  assert.equal(rows[0].id, "weak");
+  assert.ok(rows[0].match_score > 0 && rows[0].match_score < 0.03);
+  assert.equal(rows[1].match_score, 0);
+});
