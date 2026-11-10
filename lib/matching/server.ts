@@ -85,7 +85,11 @@ export async function serverMatch(
         .map((doc) => ({ ...doc, vector: unpackVector(doc.vector) }));
       ready = index.ready;
       updatedAt = index.indexUpdatedAt;
-    } catch {
+    } catch (error) {
+      console.warn(
+        "TSE matching cache unavailable",
+        error instanceof Error ? error.name : "UnknownError",
+      );
       warning =
         "Using word matching for now. Try deeper matching again shortly.";
     }
@@ -113,7 +117,11 @@ export async function serverMatch(
     try {
       query = raw.length ? await dependencies.encode(raw) : [];
       engine = "semantic";
-    } catch {
+    } catch (error) {
+      console.warn(
+        "TSE matching inference unavailable",
+        error instanceof Error ? error.name : "UnknownError",
+      );
       warning =
         "Using word matching for now. Try deeper matching again shortly.";
     }

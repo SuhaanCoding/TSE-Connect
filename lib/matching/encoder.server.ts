@@ -19,6 +19,13 @@ function getEncoder() {
     }) as Promise<FeatureExtractionPipeline>
   ).catch((error) => {
     encoder = null;
+    // Initialization only touches bundled public model files, never query text.
+    console.warn(
+      "TSE matching model initialization failed",
+      error instanceof Error
+        ? error.message.slice(0, 800)
+        : "Unknown model initialization error",
+    );
     throw error;
   }));
 }

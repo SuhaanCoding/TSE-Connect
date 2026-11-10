@@ -111,10 +111,20 @@ export async function POST(request: Request) {
         return indexForVisibleProfiles(profiles);
       },
       encode: async (documents) => {
-        const { encodeDocuments } = await import(
-          "@/lib/matching/encoder.server"
-        );
-        return encodeDocuments(documents);
+        let module;
+        try {
+          module = await import("@/lib/matching/encoder.server");
+        } catch (error) {
+          // Module setup has no access to the query. Only dependency/path errors are logged.
+          console.warn(
+            "TSE matching runtime import failed",
+            error instanceof Error
+              ? error.message.slice(0, 800)
+              : "Unknown runtime import error",
+          );
+          throw error;
+        }
+        return module.encodeDocuments(documents);
       },
     });
     return respond(result);
