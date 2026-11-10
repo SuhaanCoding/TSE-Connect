@@ -9,15 +9,24 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/alumni": [
       "./public/models/minilm-l6-v2-q8/**/*",
-      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/*",
+      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/onnxruntime_binding.node",
+      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime.so.1",
     ],
     "/api/alumni/matches": [
       "./public/models/minilm-l6-v2-q8/**/*",
-      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/*",
+      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/onnxruntime_binding.node",
+      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime.so.1",
     ],
     "/api/admin/scrape/webhook": [
       "./public/models/minilm-l6-v2-q8/**/*",
-      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/*",
+      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/onnxruntime_binding.node",
+      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime.so.1",
+    ],
+  },
+  // CPU inference needs no CUDA/TensorRT providers, including cached build dependencies.
+  outputFileTracingExcludes: {
+    "/*": [
+      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime_providers_*.so",
     ],
   },
   experimental: {
