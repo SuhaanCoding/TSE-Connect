@@ -95,6 +95,8 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
+    // Initial fetch synchronizes the list with the server.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, [fetchData]);
 
@@ -134,7 +136,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const SortIcon = ({ column }: { column: SortKey }) => {
+  const sortIcon = (column: SortKey) => {
     if (sortKey !== column) return <span className="text-text-muted/30 ml-1">↕</span>;
     return <span className="text-accent ml-1">{sortAsc ? "↑" : "↓"}</span>;
   };
@@ -435,6 +437,8 @@ export default function AdminDashboard() {
   // Fetch scrape history when tab is selected
   useEffect(() => {
     if (tab === "scrape") {
+      // Entering this tab refreshes its external run history.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchScrapeRuns();
     }
   }, [tab, fetchScrapeRuns]);
@@ -632,22 +636,22 @@ export default function AdminDashboard() {
                       <input type="checkbox" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleAll} className="accent-accent" />
                     </th>
                     <th className="p-3 font-medium text-text-secondary cursor-pointer select-none" onClick={() => handleSort("full_name")}>
-                      Name <SortIcon column="full_name" />
+                      Name {sortIcon("full_name")}
                     </th>
                     <th className="p-3 font-medium text-text-secondary cursor-pointer select-none" onClick={() => handleSort("current_company")}>
-                      Company <SortIcon column="current_company" />
+                      Company {sortIcon("current_company")}
                     </th>
                     <th className="p-3 font-medium text-text-secondary cursor-pointer select-none" onClick={() => handleSort("graduation_year")}>
-                      Year <SortIcon column="graduation_year" />
+                      Year {sortIcon("graduation_year")}
                     </th>
                     <th className="p-3 font-medium text-text-secondary cursor-pointer select-none" onClick={() => handleSort("opt_status")}>
-                      Status <SortIcon column="opt_status" />
+                      Status {sortIcon("opt_status")}
                     </th>
                     <th className="p-3 font-medium text-text-secondary cursor-pointer select-none" onClick={() => handleSort("login_email")}>
-                      Account <SortIcon column="login_email" />
+                      Account {sortIcon("login_email")}
                     </th>
                     <th className="p-3 font-medium text-text-secondary cursor-pointer select-none" onClick={() => handleSort("last_scraped_at")}>
-                      Scraped <SortIcon column="last_scraped_at" />
+                      Scraped {sortIcon("last_scraped_at")}
                     </th>
                     <th className="p-3 font-medium text-text-secondary w-16">Actions</th>
                   </tr>

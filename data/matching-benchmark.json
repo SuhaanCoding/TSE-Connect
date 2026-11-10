@@ -1,0 +1,230 @@
+{
+  "model": "minilm-751bff3-q8-mean-l2-chunks-v3-tf4.3.2",
+  "corpusSha": "ece76f6dda6c09b7c7fe0188a5d99d00c444dd0370166dc5d195e65992f7066f",
+  "judgmentsSha": "6f6c75f477b8eafc6e68142b5422480b9cc6477ac9f405e0b255ef0dbd65137d",
+  "profiles": 293,
+  "documents": 1140,
+  "cases": 42,
+  "labels": 423,
+  "selectedByDevelopmentOnly": "linear-0.8",
+  "development": [
+    {
+      "method": "linear-0.8",
+      "ndcg": 0.8430897416507594,
+      "recall": 0.8454081632653062,
+      "precision": 0.28928571428571426,
+      "mrr": 0.9583333333333334,
+      "success5": 1,
+      "meanRankMs": 8.60663092857151
+    },
+    {
+      "method": "rrf-0.65",
+      "ndcg": 0.8084511453134164,
+      "recall": 0.800765306122449,
+      "precision": 0.27499999999999997,
+      "mrr": 0.9464285714285714,
+      "success5": 1,
+      "meanRankMs": 8.733983678571219
+    },
+    {
+      "method": "rrf-0.5",
+      "ndcg": 0.805302941653596,
+      "recall": 0.7954081632653062,
+      "precision": 0.26428571428571423,
+      "mrr": 0.9642857142857143,
+      "success5": 1,
+      "meanRankMs": 8.787166678571728
+    },
+    {
+      "method": "rrf-0.8",
+      "ndcg": 0.8033219467925206,
+      "recall": 0.8275510204081634,
+      "precision": 0.2857142857142857,
+      "mrr": 0.9166666666666666,
+      "success5": 1,
+      "meanRankMs": 9.08964585714281
+    },
+    {
+      "method": "linear-0.65",
+      "ndcg": 0.7994014427600495,
+      "recall": 0.7875850340136054,
+      "precision": 0.25357142857142856,
+      "mrr": 0.9535714285714285,
+      "success5": 1,
+      "meanRankMs": 8.409075749999829
+    },
+    {
+      "method": "semantic-passages",
+      "ndcg": 0.7986851477018966,
+      "recall": 0.8067176870748299,
+      "precision": 0.2785714285714286,
+      "mrr": 0.9404761904761905,
+      "success5": 1,
+      "meanRankMs": 9.566113214285874
+    },
+    {
+      "method": "rrf-0.35",
+      "ndcg": 0.7817402803934849,
+      "recall": 0.774829931972789,
+      "precision": 0.24999999999999997,
+      "mrr": 0.9583333333333333,
+      "success5": 1,
+      "meanRankMs": 8.991593750000154
+    },
+    {
+      "method": "linear-0.5",
+      "ndcg": 0.7659432257539943,
+      "recall": 0.7596088435374151,
+      "precision": 0.2392857142857143,
+      "mrr": 0.9265873015873015,
+      "success5": 0.9642857142857143,
+      "meanRankMs": 8.744741142856908
+    },
+    {
+      "method": "linear-0.35",
+      "ndcg": 0.7432424282116298,
+      "recall": 0.7385204081632654,
+      "precision": 0.23214285714285712,
+      "mrr": 0.9208333333333333,
+      "success5": 0.9642857142857143,
+      "meanRankMs": 9.189867464285694
+    },
+    {
+      "method": "bm25",
+      "ndcg": 0.6812895492573201,
+      "recall": 0.6510204081632652,
+      "precision": 0.20357142857142857,
+      "mrr": 0.8746031746031745,
+      "success5": 0.9285714285714286,
+      "meanRankMs": 9.606092285714112
+    },
+    {
+      "method": "current",
+      "ndcg": 0.567193825465887,
+      "recall": 0.5760204081632653,
+      "precision": 0.1821428571428571,
+      "mrr": 0.5699905766148724,
+      "success5": 0.75,
+      "meanRankMs": 42.75394203571422
+    }
+  ],
+  "holdout": [
+    {
+      "method": "current",
+      "ndcg": 0.6450745472694344,
+      "recall": 0.55578231292517,
+      "precision": 0.22142857142857145,
+      "mrr": 0.7899659863945578,
+      "success5": 0.8571428571428571,
+      "meanRankMs": 38.800497071428836
+    },
+    {
+      "method": "bm25",
+      "ndcg": 0.7151475526014094,
+      "recall": 0.7375850340136054,
+      "precision": 0.2857142857142857,
+      "mrr": 0.8065476190476192,
+      "success5": 0.8571428571428571,
+      "meanRankMs": 9.1192738571432
+    },
+    {
+      "method": "semantic-passages",
+      "ndcg": 0.8169334570090472,
+      "recall": 0.8370748299319729,
+      "precision": 0.3285714285714286,
+      "mrr": 0.9166666666666666,
+      "success5": 1,
+      "meanRankMs": 9.021586428571677
+    },
+    {
+      "method": "rrf-0.35",
+      "ndcg": 0.8043944842424029,
+      "recall": 0.7680272108843538,
+      "precision": 0.3,
+      "mrr": 0.9166666666666666,
+      "success5": 1,
+      "meanRankMs": 9.52439578571427
+    },
+    {
+      "method": "linear-0.35",
+      "ndcg": 0.752175140243877,
+      "recall": 0.7715986394557824,
+      "precision": 0.29999999999999993,
+      "mrr": 0.8459183673469387,
+      "success5": 0.9285714285714286,
+      "meanRankMs": 10.649047571428516
+    },
+    {
+      "method": "rrf-0.5",
+      "ndcg": 0.8173035264295148,
+      "recall": 0.8001700680272109,
+      "precision": 0.3142857142857142,
+      "mrr": 0.9285714285714286,
+      "success5": 1,
+      "meanRankMs": 14.465604071428515
+    },
+    {
+      "method": "linear-0.5",
+      "ndcg": 0.807990584047513,
+      "recall": 0.8198979591836734,
+      "precision": 0.32142857142857134,
+      "mrr": 0.9047619047619048,
+      "success5": 1,
+      "meanRankMs": 9.914431357142933
+    },
+    {
+      "method": "rrf-0.65",
+      "ndcg": 0.8414565630850172,
+      "recall": 0.8239795918367347,
+      "precision": 0.32142857142857134,
+      "mrr": 0.9642857142857143,
+      "success5": 1,
+      "meanRankMs": 9.735106999999905
+    },
+    {
+      "method": "linear-0.65",
+      "ndcg": 0.8390633955576872,
+      "recall": 0.8681972789115645,
+      "precision": 0.35000000000000003,
+      "mrr": 0.9166666666666666,
+      "success5": 1,
+      "meanRankMs": 9.621988357142527
+    },
+    {
+      "method": "rrf-0.8",
+      "ndcg": 0.8484386204115678,
+      "recall": 0.8477891156462585,
+      "precision": 0.33571428571428574,
+      "mrr": 0.9642857142857143,
+      "success5": 1,
+      "meanRankMs": 9.452211357142655
+    },
+    {
+      "method": "linear-0.8",
+      "ndcg": 0.8501495681554008,
+      "recall": 0.8681972789115645,
+      "precision": 0.35000000000000003,
+      "mrr": 0.9285714285714286,
+      "success5": 1,
+      "meanRankMs": 10.814994142857163
+    }
+  ],
+  "limitation": "Evidence-grounded agent judgments, not independent human validation. Unjudged results can be relevant. Metrics evaluate documented target retrieval, not real-world networking outcomes.",
+  "split": {
+    "development": 28,
+    "holdout": 14
+  },
+  "rubric": {
+    "0": "No supporting evidence in the stored profile",
+    "1": "Adjacent background",
+    "2": "Relevant evidence",
+    "3": "Strong direct evidence"
+  },
+  "evaluationNotes": [
+    "Judgments were written from professional evidence before algorithm comparison, then top-five result pools were reviewed without method labels.",
+    "The split, labels and model weights were frozen. Fusion choice used development NDCG only.",
+    "Unit tests exposed empty background passages; code review also retained brief descriptions and labeled unstructured work/project text without guessing a source. These fixes preceded final scoring; fusion was not adjusted against holdout scores.",
+    "Unjudged candidates outside the pool may be relevant. Precision uses unjudged results as zero, so it is not an estimate of real-world accuracy.",
+    "Fictional resume examples query real candidates; this is not a collection of member-uploaded resumes."
+  ]
+}

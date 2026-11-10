@@ -47,6 +47,12 @@ export async function POST(request: Request) {
     );
   try {
     const result = await processApifyResults(payload.datasetId!, run.id);
+    if (result.updated) {
+      const { scheduleMatchingRefresh } = await import(
+        "@/lib/matching/schedule.server"
+      );
+      scheduleMatchingRefresh();
+    }
     return NextResponse.json({ message: "Progress processed", ...result });
   } catch (err) {
     console.error(

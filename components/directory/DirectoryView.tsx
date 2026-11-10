@@ -79,7 +79,9 @@ function BrowseDirectory({
   const [matchTerms, setMatchTerms] = useState<string[]>([]);
   const [filters, setFilters] = useState<AlumniFilters>(initialParsed.filters);
   const initialData = useRef({ alumni: initialAlumni, count: initialCount });
-  initialData.current = { alumni: initialAlumni, count: initialCount };
+  useEffect(() => {
+    initialData.current = { alumni: initialAlumni, count: initialCount };
+  }, [initialAlumni, initialCount]);
 
   useEffect(() => {
     const handlePopState = () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Input from "@/components/ui/Input";
 import Card from "@/components/ui/Card";
 import { debounce } from "@/lib/utils";
@@ -50,8 +50,8 @@ export default function StepIdentity({ googleName, onClaim }: StepIdentityProps)
     init();
   }, [googleName]);
 
-  const searchAlumni = useCallback(
-    debounce(async (query: string) => {
+  const searchAlumni = useMemo(
+    () => debounce(async (query: string) => {
       const res = await fetch(
         `/api/alumni/search?q=${encodeURIComponent(query)}`
       );

@@ -46,3 +46,7 @@ CLAUDE.md
 
 # Local data snapshots before authorized refreshes
 .local-backups/
+
+# Pinned public model/runtime assets are reproduced and verified by prebuild
+/public/models/
+/public/vendor/matching/

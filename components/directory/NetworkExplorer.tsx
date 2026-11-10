@@ -5,6 +5,9 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AlumniCard from "./AlumniCard";
 import SearchBar from "./SearchBar";
+import ResumeMatching from "./ResumeMatching";
+import { LocalMatchClient } from "@/lib/matching/client";
+import { localMatchResult } from "@/lib/matching/result";
 import Button from "@/components/ui/Button";
 import {
   COMPANY_CATEGORIES,
@@ -17,6 +20,8 @@ import {
 
 type Mode = "ranked" | "smart" | "wildcard";
 interface Result {
+  engine?: "semantic" | "lexical";
+  semanticReady?: number;
   data: NetworkProfile[];
   total: number;
   page: number;
@@ -57,6 +62,22 @@ export default function NetworkExplorer({
   companies: string[];
 }) {
   const params = useSearchParams();
+  const [localEnabled, setLocalEnabled] = useState(false);
+  const [resumeText, setResumeText] = useState("");
+  const [personalGoal, setPersonalGoal] = useState("");
+  const [localProgress, setLocalProgress] = useState("");
+  const [localWarning, setLocalWarning] = useState("");
+  const [lexicalOnly, setLexicalOnly] = useState(false);
+  const matcher = useRef<LocalMatchClient | null>(null);
+  useEffect(() => () => matcher.current?.dispose(), []);
+  const restartLocal = (wordsOnly = false) => {
+    matcher.current?.dispose();
+    matcher.current = null;
+    setLexicalOnly(wordsOnly);
+    setLocalEnabled(true);
+    setLocalWarning("");
+    setRetry((value) => value + 1);
+  };
   const [filters, setFilters] = useState(() => parseNetworkFilters(params));
   const [page, setPage] = useState(() =>
     Math.max(1, Number(params.get("page")) || 1),
@@ -71,6 +92,7 @@ export default function NetworkExplorer({
   const [shortlist, setShortlist] = useState<NetworkProfile[]>([]),
     [shortlistError, setShortlistError] = useState(""),
     [notice, setNotice] = useState("");
+  const [shortlistReady, setShortlistReady] = useState(false);
   const [shortlistOpen, setShortlistOpen] = useState(false);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [draftPerson, setDraftPerson] = useState<NetworkProfile | null>(null),
@@ -123,21 +145,47 @@ export default function NetworkExplorer({
         previous.current.forEach((id) => qs.append("skip", id));
       }
       try {
-        const response = await fetch(`/api/alumni/matches?${qs}`, {
-          signal: AbortSignal.any([
+        let json: Result;
+        if (localEnabled) {
+          const engine = (matcher.current ??= new LocalMatchClient(
+            setLocalProgress,
+            lexicalOnly,
+          ));
+          const ranked = await engine.rank(
+            resumeText,
+            filters.query || personalGoal,
+            filters.query,
             controller.signal,
-            AbortSignal.timeout(20000),
-          ]),
-          cache: "no-store",
-        });
-        const json = await response.json().catch(() => null);
-        if (!response.ok)
-          throw new Error(
-            json?.error || "Couldn’t load your network. Try again.",
           );
-        if (controller.signal.aborted) return;
-        if (!json || !Array.isArray(json.data))
-          throw new Error("Couldn’t load your network. Try again.");
+          if (controller.signal.aborted) return;
+          setLocalWarning(ranked.warning);
+          json = localMatchResult(
+            ranked.index,
+            ranked.hits,
+            filters,
+            page,
+            mode,
+            previous.current,
+            ranked.engine,
+          );
+        } else {
+          const response = await fetch(`/api/alumni/matches?${qs}`, {
+            signal: AbortSignal.any([
+              controller.signal,
+              AbortSignal.timeout(20000),
+            ]),
+            cache: "no-store",
+          });
+          const payload = await response.json().catch(() => null);
+          if (!response.ok)
+            throw new Error(
+              payload?.error || "Couldn’t load your network. Try again.",
+            );
+          if (controller.signal.aborted) return;
+          if (!payload || !Array.isArray(payload.data))
+            throw new Error("Couldn’t load your network. Try again.");
+          json = payload;
+        }
         setResult(json);
         if (mode !== "ranked")
           previous.current = [
@@ -146,13 +194,20 @@ export default function NetworkExplorer({
           ];
         if (mode === "ranked" && json.page !== page) setPage(json.page);
       } catch (err) {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted) {
+          if (localEnabled) {
+            matcher.current?.dispose();
+            matcher.current = null;
+          }
           setError(
             err instanceof Error &&
-              /^(Couldn’t|Sign in|Complete your)/.test(err.message)
+              /^(Couldn’t|Sign in|Complete your|Your browser|Local matching|The matching|On-device)/.test(
+                err.message,
+              )
               ? err.message
               : "Couldn’t load your network. Check your connection and try again.",
           );
+        }
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -161,13 +216,27 @@ export default function NetworkExplorer({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [filters, page, mode, draw, retry, composing]);
+  }, [
+    filters,
+    page,
+    mode,
+    draw,
+    retry,
+    composing,
+    localEnabled,
+    resumeText,
+    personalGoal,
+    lexicalOnly,
+  ]);
   const viewer = result?.viewer;
   useEffect(() => {
     if (!viewer?.id) return;
     const id = viewer.id;
     const controller = new AbortController();
     storageLoaded.current = "";
+    // Restore this viewer’s external shortlist before enabling writes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setShortlistReady(false);
     setShortlist([]);
     setShortlistError("");
     let ids: string[] = [];
@@ -184,6 +253,7 @@ export default function NetworkExplorer({
     }
     if (!ids.length) {
       storageLoaded.current = id;
+      setShortlistReady(true);
       return;
     }
     const qs = new URLSearchParams({ mode: "shortlist" });
@@ -198,6 +268,7 @@ export default function NetworkExplorer({
         if (!controller.signal.aborted) {
           setShortlist(json.data);
           storageLoaded.current = id;
+          setShortlistReady(true);
         }
       })
       .catch(() => {
@@ -216,6 +287,8 @@ export default function NetworkExplorer({
         JSON.stringify(shortlist.map((person) => person.id)),
       );
     } catch {
+      // Storage failures must remain visible beside the shortlist.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShortlistError(
         "This browser can’t save your shortlist. It will last until you leave this page.",
       );
@@ -286,6 +359,8 @@ export default function NetworkExplorer({
         `tse-draft-${viewer.id}-${draftPerson.id}`,
         draft.slice(0, 2000),
       );
+      // Acknowledge the external session-storage write.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraftSaved(true);
     } catch {
       setDraftSaved(false);
@@ -350,6 +425,50 @@ export default function NetworkExplorer({
           </p>
         )}
       </section>
+      <ResumeMatching
+        enabled={localEnabled}
+        busy={pending}
+        progress={localProgress}
+        warning={localWarning}
+        activeResume={!!resumeText || !!personalGoal}
+        onEnable={() => restartLocal(false)}
+        onDisable={() => {
+          matcher.current?.dispose();
+          matcher.current = null;
+          setLocalEnabled(false);
+          setLocalWarning("");
+        }}
+        onLexical={() => restartLocal(true)}
+        onRefresh={() => restartLocal(lexicalOnly)}
+        onApply={(text, goal) => {
+          setResumeText(text);
+          setPersonalGoal(goal);
+          setLocalEnabled(true);
+          setPage(1);
+          setMode("ranked");
+          previous.current = [];
+        }}
+        onForget={() => {
+          matcher.current?.dispose();
+          matcher.current = null;
+          setResumeText("");
+          setPersonalGoal("");
+          setLocalEnabled(false);
+          setLocalWarning("");
+          setPage(1);
+          setMode("ranked");
+          previous.current = [];
+        }}
+      />
+      {localEnabled && result?.engine && !pending && (
+        <p className="text-xs text-text-muted" role="status">
+          {result.engine === "semantic"
+            ? "Meaning + word matching"
+            : "Private word matching"}{" "}
+          · {result.semanticReady ?? 0} of {result.poolCount} people have
+          prepared background text. Missing profiles remain in the ranking.
+        </p>
+      )}
       <SearchBar
         value={filters.query}
         onChange={(query) => change({ query })}
@@ -812,8 +931,7 @@ export default function NetworkExplorer({
                         }
                         onClick={() => toggleShortlist(person)}
                         disabled={
-                          !storageLoaded.current ||
-                          person.opt_status === "opted_out"
+                          !shortlistReady || person.opt_status === "opted_out"
                         }
                         aria-pressed={shortlist.some(
                           (item) => item.id === person.id,

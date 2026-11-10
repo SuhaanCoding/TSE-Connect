@@ -10,6 +10,8 @@ function escapeIlike(input: string): string {
   return input.replace(/[%_\\]/g, "\\$&");
 }
 
+export const maxDuration = 300;
+
 export async function GET(request: Request) {
   const supabase = await createClient();
   const {
@@ -330,5 +332,16 @@ export async function PUT(request: Request) {
     );
   }
 
+  if ("bio" in updateData || "keywords" in updateData) {
+    const { scheduleMatchingRefresh } = await import(
+      "@/lib/matching/schedule.server"
+    );
+    const { data: profile } = await supabase
+      .from("alumni")
+      .select("id")
+      .eq("auth_id", user.id)
+      .maybeSingle();
+    if (profile) scheduleMatchingRefresh([profile.id]);
+  }
   return NextResponse.json({ success: true });
 }

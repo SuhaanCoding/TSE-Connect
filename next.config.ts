@@ -1,6 +1,25 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: [
+    "@huggingface/transformers",
+    "onnxruntime-node",
+    "sharp",
+  ],
+  outputFileTracingIncludes: {
+    "/api/alumni": [
+      "./public/models/minilm-l6-v2-q8/**/*",
+      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/*",
+    ],
+    "/api/alumni/matches": [
+      "./public/models/minilm-l6-v2-q8/**/*",
+      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/*",
+    ],
+    "/api/admin/scrape/webhook": [
+      "./public/models/minilm-l6-v2-q8/**/*",
+      "./node_modules/onnxruntime-node/bin/napi-v6/linux/x64/*",
+    ],
+  },
   experimental: {
     staleTimes: {
       dynamic: 30,
