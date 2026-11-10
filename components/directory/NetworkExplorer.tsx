@@ -379,6 +379,7 @@ export default function NetworkExplorer({
           {COMPANY_CATEGORIES.filter(
             (category, index) =>
               categoriesExpanded ||
+              category.featured ||
               index < 8 ||
               filters.categories.includes(category.id),
           ).map((category) => {

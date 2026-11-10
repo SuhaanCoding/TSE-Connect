@@ -444,7 +444,8 @@
   },
   {
     "id": "research",
-    "label": "Research labs",
+    "label": "Research",
+    "featured": true,
     "aliases": [
       "San Diego Supercomputer Center",
       "Qualcomm Institute",

@@ -4,6 +4,7 @@ import type { Alumni } from "./types";
 export interface CompanyCategoryDefinition {
   id: string;
   label: string;
+  featured?: boolean;
   aliases: string[];
   namePatterns?: string[];
   sources?: string[];
