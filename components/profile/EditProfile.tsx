@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
@@ -8,6 +8,12 @@ import Badge from "@/components/ui/Badge";
 import Toggle from "@/components/ui/Toggle";
 import Toast from "@/components/ui/Toast";
 import Avatar from "@/components/ui/Avatar";
+import KeywordsField from "./KeywordsField";
+import {
+  keywordsFromText,
+  validateKeywords,
+  MAX_BIO_LENGTH,
+} from "@/lib/profile";
 import {
   GRADUATION_YEARS,
   type Alumni,
@@ -28,27 +34,50 @@ function isValidUrl(url: string): boolean {
 export default function EditProfile({ alumni }: EditProfileProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
   const submittingRef = useRef(false);
+  const bioRef = useRef<HTMLTextAreaElement>(null);
+  const [keywordsText, setKeywordsText] = useState(
+    (alumni.keywords || []).join(", "),
+  );
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     full_name: alumni.full_name || "",
+    bio: alumni.bio || "",
     graduation_year: alumni.graduation_year || "",
     current_role: alumni.current_role || "",
-    current_company: alumni.current_company || "",
     linkedin_url: alumni.linkedin_url || "",
     contact_email: alumni.contact_email || "",
-    preferred_contact: (alumni.preferred_contact || "linkedin") as ContactPreference,
+    preferred_contact: (alumni.preferred_contact ||
+      "linkedin") as ContactPreference,
     opt_status: alumni.opt_status || "not_confirmed",
   });
+
+  useEffect(() => {
+    if (!bioRef.current) return;
+    bioRef.current.style.height = "auto";
+    bioRef.current.style.height = `${Math.min(bioRef.current.scrollHeight, 384)}px`;
+  }, [formData.bio]);
 
   const handleChange = (field: string, value: string | string[] | boolean) => {
     setFormData((prev) => {
       const next = { ...prev, [field]: value };
 
       // Auto-correct preferred_contact when contact fields change or opt-in toggles
-      if (field === "linkedin_url" || field === "contact_email" || field === "opt_status") {
-        const hasLinkedIn = !!(field === "linkedin_url" ? (value as string).trim() : next.linkedin_url.trim());
-        const hasEmail = !!(field === "contact_email" ? (value as string).trim() : next.contact_email.trim());
+      if (
+        field === "linkedin_url" ||
+        field === "contact_email" ||
+        field === "opt_status"
+      ) {
+        const hasLinkedIn = !!(field === "linkedin_url"
+          ? (value as string).trim()
+          : next.linkedin_url.trim());
+        const hasEmail = !!(field === "contact_email"
+          ? (value as string).trim()
+          : next.contact_email.trim());
 
         // When toggling opt-in ON, auto-compute default
         if (field === "opt_status" && value === "opted_in") {
@@ -62,7 +91,11 @@ export default function EditProfile({ alumni }: EditProfileProps) {
           next.preferred_contact = hasEmail ? "email" : "linkedin";
         } else if (next.preferred_contact === "email" && !hasEmail) {
           next.preferred_contact = "linkedin";
-        } else if (next.preferred_contact === "linkedin" && !hasLinkedIn && hasEmail) {
+        } else if (
+          next.preferred_contact === "linkedin" &&
+          !hasLinkedIn &&
+          hasEmail
+        ) {
           next.preferred_contact = "email";
         }
       }
@@ -82,6 +115,18 @@ export default function EditProfile({ alumni }: EditProfileProps) {
 
   const handleSubmit = async () => {
     if (submittingRef.current) return;
+    setSaveError(null);
+    if (formData.bio.length > MAX_BIO_LENGTH) {
+      setSaveError(`Keep your bio within ${MAX_BIO_LENGTH} characters.`);
+      bioRef.current?.focus();
+      return;
+    }
+    const keywords = keywordsFromText(keywordsText);
+    const keywordError = validateKeywords(keywords);
+    if (keywordError) {
+      document.getElementById("keywords")?.focus();
+      return;
+    }
 
     // Validate
     if (!formData.full_name.trim()) {
@@ -93,11 +138,18 @@ export default function EditProfile({ alumni }: EditProfileProps) {
       return;
     }
     if (formData.contact_email && !isValidEmail(formData.contact_email)) {
-      setToast({ message: "Please enter a valid email address", type: "error" });
+      setToast({
+        message: "Please enter a valid email address",
+        type: "error",
+      });
       return;
     }
     if (formData.contact_email && isUcsdEmail(formData.contact_email)) {
-      setToast({ message: "UCSD emails expire after graduation. Please use a personal email.", type: "error" });
+      setToast({
+        message:
+          "UCSD emails expire after graduation. Please use a personal email.",
+        type: "error",
+      });
       return;
     }
 
@@ -107,20 +159,27 @@ export default function EditProfile({ alumni }: EditProfileProps) {
       const res = await fetch("/api/alumni", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, keywords }),
       });
       if (res.ok) {
         setToast({ message: "Profile updated successfully", type: "success" });
         router.refresh();
       } else if (res.status === 401) {
-        setToast({ message: "Session expired. Please sign in again.", type: "error" });
+        setToast({
+          message: "Session expired. Please sign in again.",
+          type: "error",
+        });
         setTimeout(() => router.push("/"), 2000);
       } else {
         const data = await res.json().catch(() => ({}));
-        setToast({ message: data.error || "Failed to update profile", type: "error" });
+        setSaveError(
+          `${data.error || "Failed to update profile"}. Your changes are still here. Try saving again.`,
+        );
       }
     } catch {
-      setToast({ message: "Network error. Please try again.", type: "error" });
+      setSaveError(
+        "Network error. Your changes are still here. Please try again.",
+      );
     } finally {
       setLoading(false);
       submittingRef.current = false;
@@ -143,7 +202,9 @@ export default function EditProfile({ alumni }: EditProfileProps) {
         <div className="flex items-center gap-4">
           <Avatar name={formData.full_name} src={alumni.avatar_url} size="lg" />
           <div>
-            <p className="font-heading font-semibold">{formData.full_name || "Your Name"}</p>
+            <p className="font-heading font-semibold">
+              {formData.full_name || "Your Name"}
+            </p>
             <p className="text-sm text-text-muted">{alumni.login_email}</p>
           </div>
         </div>
@@ -161,7 +222,10 @@ export default function EditProfile({ alumni }: EditProfileProps) {
             error={!formData.full_name.trim() ? "Required" : undefined}
           />
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="graduation_year" className="text-sm font-medium text-text-secondary">
+            <label
+              htmlFor="graduation_year"
+              className="text-sm font-medium text-text-secondary"
+            >
               Graduation Year
             </label>
             <select
@@ -172,7 +236,9 @@ export default function EditProfile({ alumni }: EditProfileProps) {
             >
               <option value="">Select year</option>
               {GRADUATION_YEARS.map((year) => (
-                <option key={year} value={year}>{year}</option>
+                <option key={year} value={year}>
+                  {year}
+                </option>
               ))}
             </select>
           </div>
@@ -185,9 +251,53 @@ export default function EditProfile({ alumni }: EditProfileProps) {
           <Input
             id="current_company"
             label="Current Company"
-            value={formData.current_company}
-            onChange={(e) => handleChange("current_company", e.target.value)}
+            value={alumni.current_company || ""}
+            readOnly
+            aria-describedby="company-source"
+            className="text-text-secondary"
           />
+          <p id="company-source" className="text-xs text-text-muted">
+            Companies are synced from LinkedIn. Update your LinkedIn profile to
+            change them; updates appear after the next refresh.
+          </p>
+        </section>
+
+        <section className="space-y-4" aria-labelledby="keywords-heading">
+          <h2
+            id="keywords-heading"
+            className="font-heading font-semibold text-lg border-b border-border pb-2"
+          >
+            About You
+          </h2>
+          <div className="space-y-2">
+            <label
+              htmlFor="bio"
+              className="block text-sm font-medium text-text-secondary"
+            >
+              Bio (optional)
+            </label>
+            <textarea
+              ref={bioRef}
+              id="bio"
+              rows={5}
+              value={formData.bio}
+              onChange={(event) => handleChange("bio", event.target.value)}
+              maxLength={MAX_BIO_LENGTH}
+              aria-describedby="bio-help bio-count"
+              placeholder="What are you working on? What could you help someone with, or learn more about?"
+              className="min-h-32 max-h-96 w-full resize-none rounded-lg border border-border bg-[#141416] px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-text-muted transition-colors focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+            />
+            <div className="flex items-start justify-between gap-4 text-xs text-text-muted">
+              <p id="bio-help">
+                Shown to signed-in TSE members. Your bio and keywords help
+                people find you and suggest shared interests.
+              </p>
+              <span id="bio-count" className="shrink-0 tabular-nums">
+                {formData.bio.length}/{MAX_BIO_LENGTH}
+              </span>
+            </div>
+          </div>
+          <KeywordsField value={keywordsText} onChange={setKeywordsText} />
         </section>
 
         {/* Contact */}
@@ -200,7 +310,11 @@ export default function EditProfile({ alumni }: EditProfileProps) {
             label="LinkedIn URL"
             value={formData.linkedin_url}
             onChange={(e) => handleChange("linkedin_url", e.target.value)}
-            error={formData.linkedin_url && !isValidUrl(formData.linkedin_url) ? "Invalid URL" : undefined}
+            error={
+              formData.linkedin_url && !isValidUrl(formData.linkedin_url)
+                ? "Invalid URL"
+                : undefined
+            }
           />
           <div>
             <Input
@@ -212,9 +326,10 @@ export default function EditProfile({ alumni }: EditProfileProps) {
               error={
                 formData.contact_email && !isValidEmail(formData.contact_email)
                   ? "Invalid email"
-                  : formData.contact_email && isUcsdEmail(formData.contact_email)
-                  ? "UCSD emails expire after graduation. Please use a personal email."
-                  : undefined
+                  : formData.contact_email &&
+                      isUcsdEmail(formData.contact_email)
+                    ? "UCSD emails expire after graduation. Please use a personal email."
+                    : undefined
               }
             />
             <p className="mt-1 text-xs text-text-muted">
@@ -255,26 +370,52 @@ export default function EditProfile({ alumni }: EditProfileProps) {
                       interactive
                       active={formData.preferred_contact === option}
                       onClick={() => handleContactSelect(option)}
-                      className={disabled ? "opacity-40 cursor-not-allowed" : ""}
+                      className={
+                        disabled ? "opacity-40 cursor-not-allowed" : ""
+                      }
                     >
                       {option.charAt(0).toUpperCase() + option.slice(1)}
                     </Badge>
                   );
                 })}
               </div>
-              {!formData.linkedin_url.trim() && !formData.contact_email.trim() && (
-                <p className="text-xs text-yellow-400">
-                  Add a LinkedIn URL or contact email to set your preferred contact method.
-                </p>
-              )}
+              {!formData.linkedin_url.trim() &&
+                !formData.contact_email.trim() && (
+                  <p className="text-xs text-yellow-400">
+                    Add a LinkedIn URL or contact email to set your preferred
+                    contact method.
+                  </p>
+                )}
             </div>
           )}
         </section>
 
         {/* Save */}
         <div className="pt-4">
-          <Button onClick={handleSubmit} loading={loading} disabled={loading}>
-            Save Changes
+          {saveError && (
+            <p role="alert" className="mb-3 text-sm text-red-400">
+              {saveError}
+            </p>
+          )}
+          <Button
+            onClick={handleSubmit}
+            disabled={loading}
+            aria-busy={loading}
+            className="relative"
+          >
+            <span className={loading ? "invisible" : ""}>Save Changes</span>
+            {loading && (
+              <span
+                className="absolute inset-0 flex items-center justify-center"
+                role="status"
+                aria-label="Saving changes"
+              >
+                <span
+                  aria-hidden="true"
+                  className="h-4 w-4 rounded-full border-2 border-current border-t-transparent animate-spin"
+                />
+              </span>
+            )}
           </Button>
         </div>
       </div>

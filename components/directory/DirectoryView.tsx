@@ -5,22 +5,10 @@ import { useSearchParams } from "next/navigation";
 import SearchBar from "./SearchBar";
 import FilterBar from "./FilterBar";
 import AlumniGrid from "./AlumniGrid";
-import { debounce } from "@/lib/utils";
+import ProfileMatches from "./ProfileMatches";
 import type { Alumni, AlumniFilters } from "@/lib/types";
 
 const PAGE_LIMIT = 24;
-
-// Module-level cache survives client-side navigations (component unmount/remount)
-let directoryCache: {
-  key: string;
-  alumni: Alumni[];
-  totalCount: number;
-  matchTerms: string[];
-} | null = null;
-
-function cacheKey(filters: AlumniFilters, searchInput: string, page: number): string {
-  return JSON.stringify({ filters, searchInput, page });
-}
 
 function parseFiltersFromParams(params: URLSearchParams): {
   filters: AlumniFilters;
@@ -38,23 +26,23 @@ function parseFiltersFromParams(params: URLSearchParams): {
       opt_statuses:
         params.get("opt_statuses")?.split(",").filter(Boolean) || [],
     },
-    page: parseInt(params.get("page") || "1", 10),
+    page: Math.max(1, parseInt(params.get("page") || "1", 10) || 1),
   };
 }
 
 function buildSearchParams(
   filters: AlumniFilters,
   searchInput: string,
-  page: number
+  page: number,
 ): string {
   const params = new URLSearchParams();
   if (searchInput) params.set("q", searchInput);
   if (filters.graduation_years.length)
     params.set("years", filters.graduation_years.join(","));
-  if (filters.companies.length) {
+  if (filters.companies.length)
     params.set("companies", filters.companies.join(","));
+  if (filters.company_match !== "all")
     params.set("company_match", filters.company_match);
-  }
   if (filters.opt_statuses.length)
     params.set("opt_statuses", filters.opt_statuses.join(","));
   if (page > 1) params.set("page", String(page));
@@ -79,105 +67,24 @@ export default function DirectoryView({
   const searchParams = useSearchParams();
   const initialParsed = parseFiltersFromParams(searchParams);
 
-  const hasInitialFilters =
-    !!initialParsed.searchInput ||
-    initialParsed.filters.graduation_years.length > 0 ||
-    initialParsed.filters.companies.length > 0 ||
-    initialParsed.filters.opt_statuses.length > 0;
-
-  // Check if we have cached results for these exact filters
-  const cachedKey = cacheKey(initialParsed.filters, initialParsed.searchInput, initialParsed.page);
-  const cached = directoryCache?.key === cachedKey ? directoryCache : null;
-
-  const [alumni, setAlumni] = useState<Alumni[]>(
-    cached ? cached.alumni : hasInitialFilters ? [] : initialAlumni
-  );
-  const [totalCount, setTotalCount] = useState(
-    cached ? cached.totalCount : hasInitialFilters ? 0 : initialCount
-  );
-  const [loading, setLoading] = useState(hasInitialFilters && !cached);
+  const [alumni, setAlumni] = useState<Alumni[]>(initialAlumni);
+  const [totalCount, setTotalCount] = useState(initialCount);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  const [isComposing, setIsComposing] = useState(false);
   const [page, setPage] = useState(initialParsed.page);
   const [searchInput, setSearchInput] = useState(initialParsed.searchInput);
-  const [matchTerms, setMatchTerms] = useState<string[]>(cached?.matchTerms || []);
-  const [filters, setFilters] = useState<AlumniFilters>(
-    initialParsed.filters
-  );
-  const initialFetchDone = useRef(!!cached);
-  const isFirstRun = useRef(true);
-  const lastAppliedKey = useRef(cachedKey);
+  const [matchTerms, setMatchTerms] = useState<string[]>([]);
+  const [filters, setFilters] = useState<AlumniFilters>(initialParsed.filters);
+  const initialData = useRef({ alumni: initialAlumni, count: initialCount });
+  initialData.current = { alumni: initialAlumni, count: initialCount };
 
-  // Refs for server-rendered data — avoids triggering the effect on new array references
-  const initialAlumniRef = useRef(initialAlumni);
-  const initialCountRef = useRef(initialCount);
-  initialAlumniRef.current = initialAlumni;
-  initialCountRef.current = initialCount;
-
-  const fetchAlumni = useCallback(async (currentFilters: AlumniFilters, currentPage: number) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (currentFilters.query) params.set("q", currentFilters.query);
-      if (currentFilters.graduation_years.length > 0)
-        params.set("years", currentFilters.graduation_years.join(","));
-      if (currentFilters.companies.length > 0) {
-        params.set("companies", currentFilters.companies.join(","));
-        params.set("company_match", currentFilters.company_match);
-      }
-      if (currentFilters.opt_statuses.length > 0)
-        params.set("opt_statuses", currentFilters.opt_statuses.join(","));
-
-      params.set("page", String(currentPage));
-      params.set("limit", String(PAGE_LIMIT));
-
-      const res = await fetch(`/api/alumni?${params}`);
-      const json = await res.json();
-      const data = json.data || [];
-      const count = json.count || 0;
-      const terms = json.matchTerms || [];
-      setAlumni(data);
-      setTotalCount(count);
-      setMatchTerms(terms);
-
-      // Cache results for instant restore on back-navigation
-      const newKey = cacheKey(currentFilters, currentFilters.query || "", currentPage);
-      directoryCache = {
-        key: newKey,
-        alumni: data,
-        totalCount: count,
-        matchTerms: terms,
-      };
-      lastAppliedKey.current = newKey;
-    } catch (error) {
-      console.error("Failed to fetch alumni:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const debouncedFetchRef = useRef(
-    debounce((newFilters: AlumniFilters, newPage: number) => {
-      fetchAlumni(newFilters, newPage);
-    }, 300)
-  );
-
-  // Sync URL search params when filters change (using history.pushState
-  // to avoid triggering useSearchParams and causing an infinite loop)
-  const debouncedUrlUpdateRef = useRef(
-    debounce((newFilters: AlumniFilters, newSearchInput: string, newPage: number) => {
-      const qs = buildSearchParams(newFilters, newSearchInput, newPage);
-      const newUrl = qs ? `/directory?${qs}` : "/directory";
-      // Only push if URL actually changed
-      if (window.location.pathname + window.location.search !== newUrl) {
-        window.history.pushState(null, "", newUrl);
-      }
-    }, 300)
-  );
-
-  // Restore filters when browser back/forward is used
   useEffect(() => {
     const handlePopState = () => {
-      const params = new URLSearchParams(window.location.search);
-      const parsed = parseFiltersFromParams(params);
+      const parsed = parseFiltersFromParams(
+        new URLSearchParams(window.location.search),
+      );
       setSearchInput(parsed.searchInput);
       setFilters(parsed.filters);
       setPage(parsed.page);
@@ -187,80 +94,111 @@ export default function DirectoryView({
   }, []);
 
   useEffect(() => {
-    const isDefault =
-      !searchInput &&
-      filters.graduation_years.length === 0 &&
-      filters.companies.length === 0 &&
-      filters.company_match === "all" &&
-      filters.opt_statuses.length === 0;
+    if (isComposing) return;
+    const controller = new AbortController();
+    const query = searchInput.trim();
+    const qs = buildSearchParams(filters, query, page);
+    const isDefault = !qs;
+    const timer = setTimeout(
+      async () => {
+        const url = qs ? `/directory?${qs}` : "/directory";
+        if (window.location.pathname + window.location.search !== url) {
+          window.history.pushState(null, "", url);
+        }
+        setError(null);
+        if (isDefault) {
+          setAlumni(initialData.current.alumni);
+          setTotalCount(initialData.current.count);
+          setMatchTerms([]);
+          setLoading(false);
+        }
+        if (!isDefault) setLoading(true);
+        try {
+          const params = new URLSearchParams(qs);
+          params.set("limit", String(PAGE_LIMIT));
+          const res = await fetch(`/api/alumni?${params}`, {
+            signal: controller.signal,
+          });
+          if (!res.ok) throw new Error("Search failed");
+          const json = await res.json();
+          if (controller.signal.aborted) return;
+          setAlumni(json.data || []);
+          setTotalCount(json.count || 0);
+          setMatchTerms(json.matchTerms || []);
+        } catch {
+          if (!controller.signal.aborted)
+            setError("Couldn’t load alumni. Please try again.");
+        } finally {
+          if (!controller.signal.aborted) setLoading(false);
+        }
+      },
+      query ? 300 : 0,
+    );
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [searchInput, filters, page, isComposing, retry]);
 
-    if (isDefault) {
-      // Reset to server-rendered initial data
-      setAlumni(initialAlumniRef.current);
-      setTotalCount(initialCountRef.current);
-      setMatchTerms([]);
-      setPage(1);
-      directoryCache = null;
-      lastAppliedKey.current = "";
-      debouncedUrlUpdateRef.current(filters, "", 1);
-      return;
-    }
-
-    // First mount with active filters
-    if (isFirstRun.current) {
-      isFirstRun.current = false;
-      if (!initialFetchDone.current) {
-        // No cache — fetch immediately
-        initialFetchDone.current = true;
-        fetchAlumni({ ...filters, query: searchInput }, page);
-      }
-      // Cache hit — data already displayed via useState, skip fetch
-      return;
-    }
-
-    // User changed filters — debounced fetch
-    const currentKey = cacheKey({ ...filters, query: searchInput }, searchInput, 1);
-    if (currentKey === lastAppliedKey.current) return;
-    lastAppliedKey.current = currentKey;
-    setPage(1);
-    debouncedFetchRef.current({ ...filters, query: searchInput }, 1);
-    debouncedUrlUpdateRef.current(filters, searchInput, 1);
-  }, [searchInput, filters]);
-
-  const handlePageChange = useCallback((newPage: number) => {
-    setPage(newPage);
-    const currentFilters = { ...filters, query: searchInput };
-    fetchAlumni(currentFilters, newPage);
-    const qs = buildSearchParams(filters, searchInput, newPage);
-    const newUrl = qs ? `/directory?${qs}` : "/directory";
-    window.history.replaceState(window.history.state, "", newUrl);
-  }, [filters, searchInput, fetchAlumni]);
-
+  const handlePageChange = useCallback(
+    (newPage: number) => setPage(newPage),
+    [],
+  );
   const handleFilterChange = (partial: Partial<AlumniFilters>) => {
     setFilters((prev) => ({ ...prev, ...partial }));
+    setPage(1);
   };
 
   const totalPages = Math.ceil(totalCount / PAGE_LIMIT);
 
   return (
     <div className="space-y-6">
-      <SearchBar value={searchInput} onChange={setSearchInput} />
+      <SearchBar
+        value={searchInput}
+        onChange={(value) => {
+          setSearchInput(value);
+          setPage(1);
+        }}
+        onCompositionChange={setIsComposing}
+      />
       <FilterBar
         filters={{ ...filters, query: searchInput }}
         onFilterChange={handleFilterChange}
         years={years}
         companies={companies}
       />
-      <AlumniGrid
-        alumni={alumni}
-        totalCount={totalCount}
-        loading={loading}
-        viewerOptedIn={viewerOptedIn}
-        page={page}
-        totalPages={totalPages}
-        onPageChange={handlePageChange}
-        companyFilter={matchTerms}
-      />
+      {!searchInput.trim() &&
+        page === 1 &&
+        !filters.graduation_years.length &&
+        !filters.companies.length &&
+        !filters.opt_statuses.length &&
+        filters.company_match === "all" && <ProfileMatches />}
+      {error && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-3 text-sm text-red-400"
+        >
+          <p>{error}</p>
+          <button
+            onClick={() => setRetry((value) => value + 1)}
+            className="cursor-pointer rounded text-foreground underline hover:text-accent-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            Try again
+          </button>
+        </div>
+      )}
+      <div aria-busy={loading}>
+        <AlumniGrid
+          alumni={alumni}
+          totalCount={totalCount}
+          loading={loading}
+          viewerOptedIn={viewerOptedIn}
+          page={page}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
+          companyFilter={matchTerms}
+        />
+      </div>
     </div>
   );
 }

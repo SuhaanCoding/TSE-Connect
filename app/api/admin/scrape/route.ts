@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     console.error("Failed to fetch alumni for scrape:", fetchError.message);
     return NextResponse.json(
       { error: "Failed to fetch alumni data" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
   for (const a of alumniWithLinkedin || []) {
     if (!a.linkedin_url) continue;
     const normalized = normalizeLinkedInUrl(a.linkedin_url);
-    if (!urlSet.has(normalized)) {
+    if (normalized && !urlSet.has(normalized)) {
       urlSet.add(normalized);
       urls.push(a.linkedin_url.trim());
     }
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
   if (urls.length === 0) {
     return NextResponse.json(
       { error: "No alumni with LinkedIn URLs found" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -123,7 +123,7 @@ export async function POST(request: Request) {
       await registerWebhook(
         runId,
         `${appUrl}/api/admin/scrape/webhook`,
-        webhookSecret
+        webhookSecret,
       );
     }
 
@@ -138,7 +138,7 @@ export async function POST(request: Request) {
     console.error("Apify start error:", err);
     return NextResponse.json(
       { error: "Failed to start Apify scrape" },
-      { status: 502 }
+      { status: 502 },
     );
   }
 }
@@ -180,17 +180,22 @@ export async function GET(request: Request) {
 
   if (error) {
     console.error("Failed to fetch scrape runs:", error.message);
-    return NextResponse.json({ error: "Failed to fetch history" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch history" },
+      { status: 500 },
+    );
   }
 
   // Catch-up: check any "running" runs against Apify's actual status
   const runningRuns = (runs || []).filter(
-    (r) => r.status === "running" && r.apify_run_id
+    (r) => r.status === "running" && r.apify_run_id,
   );
 
   for (const run of runningRuns) {
     try {
-      const { status: apifyStatus } = await getRunStatus(run.apify_run_id);
+      const { status: apifyStatus, statusMessage } = await getRunStatus(
+        run.apify_run_id,
+      );
 
       if (apifyStatus === "SUCCEEDED" && run.apify_dataset_id) {
         // Apify finished — process results now
@@ -220,18 +225,25 @@ export async function GET(request: Request) {
           .update({
             status: "failed",
             completed_at: new Date().toISOString(),
-            error_message: `Apify run ${apifyStatus}`,
+            error_message: statusMessage || `Apify run ${apifyStatus}`,
           })
           .eq("id", run.id);
 
         const idx = runs!.findIndex((r) => r.id === run.id);
         if (idx !== -1) {
-          runs![idx] = { ...runs![idx], status: "failed", error_message: `Apify run ${apifyStatus}` };
+          runs![idx] = {
+            ...runs![idx],
+            status: "failed",
+            error_message: statusMessage || `Apify run ${apifyStatus}`,
+          };
         }
       }
       // If still RUNNING/READY on Apify's side, leave as-is
     } catch (err) {
-      console.error(`Failed to check Apify status for run ${run.apify_run_id}:`, err);
+      console.error(
+        `Failed to check Apify status for run ${run.apify_run_id}:`,
+        err,
+      );
     }
   }
 
@@ -254,7 +266,7 @@ export async function PUT(request: Request) {
   if (!datasetId) {
     return NextResponse.json(
       { error: "datasetId is required" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -281,7 +293,7 @@ export async function PUT(request: Request) {
     console.error("Process results error:", message);
     return NextResponse.json(
       { error: "Failed to process results" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

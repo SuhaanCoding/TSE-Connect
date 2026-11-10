@@ -16,6 +16,10 @@ export interface Alumni {
   current_role: string | null;
   current_company: string | null;
   past_companies: string[];
+  keywords: string[];
+  bio: string | null;
+  linkedin_about: string | null;
+  linkedin_background: string | null;
   opt_status: OptStatus;
   preferred_contact: ContactPreference;
   auth_id: string | null;
@@ -24,6 +28,7 @@ export interface Alumni {
 
 // Apify LinkedIn scraper response shape
 export interface ApifyLinkedInProfile {
+  [key: string]: unknown;
   url?: string;
   profileUrl?: string;
   linkedInUrl?: string;
@@ -54,7 +59,6 @@ export interface AlumniFilters {
 }
 
 export type OnboardingStep = 1 | 2 | 3 | 4;
-
 
 export const GRADUATION_YEARS = [
   "Currently in school",

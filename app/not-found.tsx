@@ -1,5 +1,4 @@
-import Link from "next/link";
-import Button from "@/components/ui/Button";
+import ButtonLink from "@/components/ui/ButtonLink";
 
 export default function NotFound() {
   return (
@@ -15,12 +14,12 @@ export default function NotFound() {
         The page you&apos;re looking for doesn&apos;t exist or has been moved.
       </p>
       <div className="mt-8 flex gap-3">
-        <Link href="/">
-          <Button variant="primary">Go Home</Button>
-        </Link>
-        <Link href="/directory">
-          <Button variant="secondary">Directory</Button>
-        </Link>
+        <ButtonLink href="/" variant="primary">
+          Go Home
+        </ButtonLink>
+        <ButtonLink href="/directory" variant="secondary">
+          Directory
+        </ButtonLink>
       </div>
       <p className="mt-12 text-xs text-text-muted">
         TSE Connect — Triton Software Engineering

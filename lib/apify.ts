@@ -1,7 +1,14 @@
+import { verifyScraperPricing, isLimitedScrape } from "./scrape-guards";
 import type { ApifyLinkedInProfile } from "./types";
 
 const APIFY_BASE = "https://api.apify.com/v2";
-const ACTOR_ID = "harvestapi~linkedin-profile-scraper";
+const ACTOR_ID =
+  process.env.APIFY_ACTOR_ID ||
+  "insights_data~linkedin-profile-extractor-enricher";
+const ACTOR_BUILD = process.env.APIFY_ACTOR_BUILD || "1.0.6";
+const MAX_RUN_CHARGE_USD = 2;
+
+export { normalizeLinkedInUrl, extractProfileUrl } from "./linkedin-profile";
 
 function getToken(): string {
   const token = process.env.APIFY_API_TOKEN;
@@ -10,47 +17,49 @@ function getToken(): string {
 }
 
 /**
- * Normalize a LinkedIn URL for reliable matching.
- * Strips protocol, www, trailing slashes, query params, and lowercases.
- * "https://www.linkedin.com/in/john-doe/?utm=..." → "linkedin.com/in/john-doe"
- */
-export function normalizeLinkedInUrl(url: string): string {
-  let normalized = url.trim().toLowerCase();
-
-  // Strip protocol
-  normalized = normalized.replace(/^https?:\/\//, "");
-
-  // Strip www.
-  normalized = normalized.replace(/^www\./, "");
-
-  // Strip query params and hash
-  normalized = normalized.replace(/[?#].*$/, "");
-
-  // Strip trailing slashes
-  normalized = normalized.replace(/\/+$/, "");
-
-  return normalized;
-}
-
-/**
  * Start an Apify LinkedIn scrape run with the given URLs.
  * Returns the runId and datasetId for tracking.
  */
 export async function startScrapeRun(
-  linkedinUrls: string[]
+  linkedinUrls: string[],
 ): Promise<{ runId: string; datasetId: string }> {
   const token = getToken();
 
+  // Fail closed when the actor changes pricing instead of silently consuming credit.
+  const actorResponse = await fetch(`${APIFY_BASE}/acts/${ACTOR_ID}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!actorResponse.ok)
+    throw new Error("Could not verify Apify actor pricing.");
+  const { data: actor } = await actorResponse.json();
+  const pricing = (actor.pricingInfos || [])
+    .filter(
+      (item: { startedAt?: string }) =>
+        !item.startedAt || new Date(item.startedAt).getTime() <= Date.now(),
+    )
+    .at(-1);
+  if (!verifyScraperPricing(pricing, linkedinUrls.length, MAX_RUN_CHARGE_USD)) {
+    throw new Error(
+      "Scraper pricing changed or this run exceeds the $2 free-credit cap. Review the actor before retrying.",
+    );
+  }
+  const params = new URLSearchParams({
+    build: ACTOR_BUILD,
+    maxTotalChargeUsd: String(MAX_RUN_CHARGE_USD),
+    timeout: "1800",
+    memory: "1024",
+  });
   const response = await fetch(
-    `${APIFY_BASE}/acts/${ACTOR_ID}/runs?token=${token}`,
+    `${APIFY_BASE}/acts/${ACTOR_ID}/runs?${params}`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        profileScraperMode: "Profile details no email ($4 per 1k)",
-        queries: linkedinUrls,
-      }),
-    }
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ urls: linkedinUrls }),
+    },
   );
 
   if (!response.ok) {
@@ -69,13 +78,18 @@ export async function startScrapeRun(
  * Check the status of an Apify run.
  */
 export async function getRunStatus(
-  runId: string
-): Promise<{ status: string; datasetId: string | null }> {
+  runId: string,
+): Promise<{
+  status: string;
+  datasetId: string | null;
+  statusMessage: string | null;
+}> {
   const token = getToken();
 
-  const response = await fetch(
-    `${APIFY_BASE}/actor-runs/${runId}?token=${token}`
-  );
+  const response = await fetch(`${APIFY_BASE}/actor-runs/${runId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
 
   if (!response.ok) {
     if (response.status === 404) throw new Error("Run not found");
@@ -85,7 +99,12 @@ export async function getRunStatus(
 
   const result = await response.json();
   return {
-    status: result.data.status,
+    status:
+      result.data.status === "SUCCEEDED" &&
+      isLimitedScrape(result.data.statusMessage)
+        ? "FAILED"
+        : result.data.status,
+    statusMessage: result.data.statusMessage || null,
     datasetId: result.data.defaultDatasetId || null,
   };
 }
@@ -94,33 +113,21 @@ export async function getRunStatus(
  * Fetch all results from a completed Apify dataset.
  */
 export async function getRunResults(
-  datasetId: string
+  datasetId: string,
 ): Promise<ApifyLinkedInProfile[]> {
   const token = getToken();
 
   const response = await fetch(
-    `${APIFY_BASE}/datasets/${datasetId}/items?token=${token}&format=json`
+    `${APIFY_BASE}/datasets/${datasetId}/items?format=json`,
+    { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
   );
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(
-      `Apify dataset fetch failed (${response.status}): ${text}`
-    );
+    throw new Error(`Apify dataset fetch failed (${response.status}): ${text}`);
   }
 
   return response.json();
-}
-
-/**
- * Extract the LinkedIn URL from an Apify profile result.
- * The actor may return it in different fields.
- */
-export function extractProfileUrl(
-  profile: ApifyLinkedInProfile
-): string | null {
-  const raw = profile.url || profile.profileUrl || profile.linkedInUrl || profile.linkedinUrl;
-  return raw?.trim() || null;
 }
 
 /**
@@ -130,32 +137,39 @@ export function extractProfileUrl(
 export async function registerWebhook(
   runId: string,
   webhookUrl: string,
-  secret: string
+  secret: string,
 ): Promise<void> {
   const token = getToken();
 
-  const response = await fetch(
-    `${APIFY_BASE}/webhooks?token=${token}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        eventTypes: ["ACTOR.RUN.SUCCEEDED", "ACTOR.RUN.FAILED", "ACTOR.RUN.ABORTED", "ACTOR.RUN.TIMED_OUT"],
-        condition: { actorRunId: runId },
-        requestUrl: webhookUrl,
-        payloadTemplate: JSON.stringify({
-          runId: "{{resource.id}}",
-          datasetId: "{{resource.defaultDatasetId}}",
-          status: "{{resource.status}}",
-          secret,
-        }),
+  const response = await fetch(`${APIFY_BASE}/webhooks`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      eventTypes: [
+        "ACTOR.RUN.SUCCEEDED",
+        "ACTOR.RUN.FAILED",
+        "ACTOR.RUN.ABORTED",
+        "ACTOR.RUN.TIMED_OUT",
+      ],
+      condition: { actorRunId: runId },
+      requestUrl: webhookUrl,
+      payloadTemplate: JSON.stringify({
+        runId: "{{resource.id}}",
+        datasetId: "{{resource.defaultDatasetId}}",
+        status: "{{resource.status}}",
+        secret,
       }),
-    }
-  );
+    }),
+  });
 
   if (!response.ok) {
     const text = await response.text();
-    console.error(`Failed to register Apify webhook (${response.status}): ${text}`);
+    console.error(
+      `Failed to register Apify webhook (${response.status}): ${text}`,
+    );
     // Non-fatal — the scrape still works, just won't auto-process
   }
 }

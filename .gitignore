@@ -43,3 +43,6 @@ next-env.d.ts
 .claude/
 AGENTS.md
 CLAUDE.md
+
+# Local data snapshots before authorized refreshes
+.local-backups/

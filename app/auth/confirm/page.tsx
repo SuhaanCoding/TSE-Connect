@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
@@ -14,7 +15,7 @@ export default function AuthConfirmPage() {
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        { auth: { flowType: "implicit", detectSessionInUrl: true } }
+        { auth: { flowType: "implicit", detectSessionInUrl: true } },
       );
 
       // The implicit flow puts tokens in the URL hash (#access_token=...)
@@ -57,12 +58,12 @@ export default function AuthConfirmPage() {
         {error ? (
           <>
             <p className="text-red-400 text-sm mb-4">{error}</p>
-            <a
+            <Link
               href="/"
               className="text-accent hover:text-accent-light text-sm transition-colors"
             >
               Back to home
-            </a>
+            </Link>
           </>
         ) : (
           <>

@@ -148,13 +148,25 @@ export async function POST(request: Request) {
       });
     }
 
-    // Fetch claimed profiles to split sync strategy
-    const { data: claimed } = await supabase
+    // Keep the spreadsheet's older career data from replacing a LinkedIn refresh.
+    const { data: existing, error: existingError } = await supabase
       .from("alumni")
-      .select("full_name")
-      .not("auth_id", "is", null);
+      .select("full_name, auth_id, last_scraped_at, current_role, current_company, past_companies");
 
-    const claimedNames = new Set(claimed?.map((c) => c.full_name) ?? []);
+    if (existingError) {
+      return NextResponse.json({ error: "Could not read existing profiles" }, { status: 500 });
+    }
+    const existingByName = new Map((existing || []).map((person) => [person.full_name, person]));
+    for (const person of alumni) {
+      const saved = existingByName.get(person.full_name);
+      if (saved?.last_scraped_at) {
+        person.current_role = saved.current_role;
+        person.current_company = saved.current_company;
+        person.past_companies = saved.past_companies || [];
+      }
+    }
+
+    const claimedNames = new Set((existing || []).filter((person) => person.auth_id).map((person) => person.full_name));
 
     let synced = 0;
     let updated = 0;

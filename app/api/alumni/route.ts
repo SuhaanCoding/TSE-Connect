@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isUcsdEmail } from "@/lib/utils";
+import { directoryCorpus } from "@/lib/directory";
+import { searchProfiles } from "@/lib/profile-matching";
+import { memberProfileUpdate } from "@/lib/profile";
 
 // Escape ILIKE wildcards in user input
 function escapeIlike(input: string): string {
@@ -27,22 +30,34 @@ export async function GET(request: Request) {
   const viewerOptedIn = viewer?.opt_status === "opted_in";
 
   const { searchParams } = new URL(request.url);
-  const q = searchParams.get("q") || "";
+  const q = (searchParams.get("q") || "").trim().slice(0, 200);
   const years = searchParams.get("years") || "";
   const companies = searchParams.get("companies") || "";
   const companyMatch = searchParams.get("company_match") || "all"; // "all" | "current" | "past"
   const optStatuses = searchParams.get("opt_statuses") || "";
   const optStatusList = optStatuses
-    ? optStatuses.split(",").map((s) => s.trim()).filter(Boolean)
+    ? optStatuses
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
     : [];
-  const page = parseInt(searchParams.get("page") || "1", 10);
-  const limit = Math.min(Math.max(parseInt(searchParams.get("limit") || "24", 10), 1), 100);
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+  const limit = Math.min(
+    Math.max(parseInt(searchParams.get("limit") || "24", 10) || 24, 1),
+    100,
+  );
 
   const companyList = companies
-    ? companies.split(",").map((c) => c.trim()).filter(Boolean)
+    ? companies
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean)
     : [];
   const yearList = years
-    ? years.split(",").map((y) => y.trim()).filter(Boolean)
+    ? years
+        .split(",")
+        .map((y) => y.trim())
+        .filter(Boolean)
     : [];
 
   let data: Record<string, unknown>[] | null = null;
@@ -50,74 +65,80 @@ export async function GET(request: Request) {
   let error: { message: string } | null = null;
 
   if (q) {
-    // Use RPC function for full-text search (includes past_companies)
-    const { data: rpcData, error: rpcError } = await supabase.rpc(
-      "search_alumni",
-      { search_query: q }
-    );
+    const corpus = await directoryCorpus(supabase);
+    const rpcData = searchProfiles(q, corpus.data);
+    const rpcError = corpus.error;
 
     if (rpcError) {
-      // Fallback to basic query if RPC doesn't exist yet
-      const fallback = await supabase
-        .from("alumni")
-        .select("*", { count: "exact" })
-        .or(
-          `full_name.ilike.%${escapeIlike(q)}%,current_company.ilike.%${escapeIlike(q)}%,current_role.ilike.%${escapeIlike(q)}%`
-        )
-        .order("full_name");
-
-      data = fallback.data;
-      count = fallback.count;
-      error = fallback.error;
+      error = rpcError;
     } else {
       // Apply additional filters in JS since RPC returns all matches
       let filtered = rpcData || [];
 
       if (yearList.length > 0) {
-        filtered = filtered.filter((a: Record<string, unknown>) =>
-          yearList.includes(a.graduation_year as string)
+        filtered = filtered.filter((a) =>
+          yearList.includes(a.graduation_year as string),
         );
       }
       if (companyList.length > 0) {
-        filtered = filtered.filter((a: Record<string, unknown>) => {
+        filtered = filtered.filter((a) => {
           if (companyMatch === "current") {
             return companyList.some((c) =>
-              (a.current_company as string)?.toLowerCase().includes(c.toLowerCase())
+              (a.current_company as string)
+                ?.toLowerCase()
+                .includes(c.toLowerCase()),
             );
           } else if (companyMatch === "past") {
             return companyList.some((c) =>
               ((a.past_companies as string[]) || []).some((pc) =>
-                pc.toLowerCase().includes(c.toLowerCase())
-              )
+                pc.toLowerCase().includes(c.toLowerCase()),
+              ),
             );
           } else {
             return companyList.some(
               (c) =>
-                (a.current_company as string)?.toLowerCase().includes(c.toLowerCase()) ||
+                (a.current_company as string)
+                  ?.toLowerCase()
+                  .includes(c.toLowerCase()) ||
                 ((a.past_companies as string[]) || []).some((pc) =>
-                  pc.toLowerCase().includes(c.toLowerCase())
-                )
+                  pc.toLowerCase().includes(c.toLowerCase()),
+                ),
             );
           }
         });
       } else if (companyMatch === "current") {
-        filtered = filtered.filter((a: Record<string, unknown>) => a.current_company);
+        filtered = filtered.filter((a) => a.current_company);
       } else if (companyMatch === "past") {
         filtered = filtered.filter(
-          (a: Record<string, unknown>) =>
-            ((a.past_companies as string[]) || []).length > 0
+          (a) => ((a.past_companies as string[]) || []).length > 0,
         );
       }
 
       if (optStatusList.length > 0) {
-        filtered = filtered.filter((a: Record<string, unknown>) =>
-          optStatusList.includes(a.opt_status as string)
+        filtered = filtered.filter((a) =>
+          optStatusList.includes(a.opt_status as string),
         );
       }
 
+      if (companyList.length > 0) {
+        filtered.sort((a, b) => {
+          const current = (row: typeof a) =>
+            companyList.some((company) =>
+              row.current_company
+                ?.toLowerCase()
+                .includes(company.toLowerCase()),
+            );
+          return (
+            Number(current(b)) - Number(current(a)) ||
+            b.match_score - a.match_score
+          );
+        });
+      }
       count = filtered.length;
       const from = (page - 1) * limit;
-      data = filtered.slice(from, from + limit);
+      data = filtered
+        .slice(from, from + limit)
+        .map((profile) => ({ ...profile }));
       error = null;
     }
   } else {
@@ -135,7 +156,9 @@ export async function GET(request: Request) {
 
     if (companyList.length > 0) {
       if (companyMatch === "current") {
-        const conditions = companyList.map((c) => `current_company.ilike.%${escapeIlike(c)}%`);
+        const conditions = companyList.map(
+          (c) => `current_company.ilike.%${escapeIlike(c)}%`,
+        );
         query = query.or(conditions.join(","));
       } else if (companyMatch === "past") {
         const conditions = companyList.map((c) => `past_companies.cs.{"${c}"}`);
@@ -170,7 +193,10 @@ export async function GET(request: Request) {
 
   if (error) {
     console.error("Alumni search error:", error.message);
-    return NextResponse.json({ error: "Failed to fetch alumni" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch alumni" },
+      { status: 500 },
+    );
   }
 
   // Determine the search terms to annotate match_type against
@@ -181,14 +207,16 @@ export async function GET(request: Request) {
   const processed = (data || []).map((alumni: Record<string, unknown>) => {
     let match_type: "current" | "past" | null = null;
     const currentCompany = alumni.current_company as string | null;
-    const pastCompanies = Array.isArray(alumni.past_companies) ? alumni.past_companies as string[] : [];
+    const pastCompanies = Array.isArray(alumni.past_companies)
+      ? (alumni.past_companies as string[])
+      : [];
 
     if (matchTerms.length > 0) {
-      const currentMatch = matchTerms.some(
-        (t) => currentCompany?.toLowerCase().includes(t.toLowerCase())
+      const currentMatch = matchTerms.some((t) =>
+        currentCompany?.toLowerCase().includes(t.toLowerCase()),
       );
       const pastMatch = matchTerms.some((t) =>
-        pastCompanies.some((pc) => pc.toLowerCase().includes(t.toLowerCase()))
+        pastCompanies.some((pc) => pc.toLowerCase().includes(t.toLowerCase())),
       );
 
       if (currentMatch) match_type = "current";
@@ -199,6 +227,10 @@ export async function GET(request: Request) {
 
     // Strip internal metadata from public responses
     delete result.last_scraped_at;
+    result.login_email = null;
+    result.auth_id = null;
+    // Shared terms are explanations for personal recommendations, not search matches.
+    delete result.shared_terms;
 
     if (!viewerOptedIn) {
       // Opted-out viewers: see names + companies only, no contact info at all
@@ -219,13 +251,30 @@ export async function GET(request: Request) {
   // Sort: current employees first when company/search filter is active
   if (matchTerms.length > 0) {
     processed.sort((a, b) => {
-      if (a.match_type === "current" && b.match_type !== "current") return -1;
-      if (a.match_type !== "current" && b.match_type === "current") return 1;
+      if (
+        companyList.length &&
+        a.match_type === "current" &&
+        b.match_type !== "current"
+      )
+        return -1;
+      if (
+        companyList.length &&
+        a.match_type !== "current" &&
+        b.match_type === "current"
+      )
+        return 1;
+      const relevance = Number(b.match_score || 0) - Number(a.match_score || 0);
+      if (q && relevance) return relevance;
       return String(a.full_name || "").localeCompare(String(b.full_name || ""));
     });
   }
 
-  return NextResponse.json({ data: processed, count, viewerOptedIn, matchTerms });
+  return NextResponse.json({
+    data: processed,
+    count,
+    viewerOptedIn,
+    matchTerms,
+  });
 }
 
 export async function PUT(request: Request) {
@@ -238,49 +287,35 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await request.json();
-
-  // Validate required fields
-  if (!body.full_name || typeof body.full_name !== "string" || !body.full_name.trim()) {
-    return NextResponse.json({ error: "full_name is required" }, { status: 400 });
-  }
-
-  // Validate enums
-  const validOptStatus = ["opted_in", "opted_out", "not_confirmed"];
-  const validContact = ["linkedin", "email", "both"];
-  if (body.opt_status && !validOptStatus.includes(body.opt_status)) {
-    return NextResponse.json({ error: "Invalid opt_status" }, { status: 400 });
-  }
-  if (body.preferred_contact && !validContact.includes(body.preferred_contact)) {
-    return NextResponse.json({ error: "Invalid preferred_contact" }, { status: 400 });
-  }
-  if (body.contact_email && isUcsdEmail(body.contact_email)) {
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      throw new Error("Invalid body");
+  } catch {
     return NextResponse.json(
-      { error: "UCSD emails expire after graduation. Please use a personal email." },
-      { status: 400 }
+      { error: "Expected a profile object." },
+      { status: 400 },
     );
   }
 
-  // Validate past_companies
-  const pastCompanies = Array.isArray(body.past_companies)
-    ? body.past_companies
-        .filter((c: unknown) => typeof c === "string")
-        .map((c: string) => c.trim())
-        .filter((c: string) => c.length > 0 && c.length <= 100)
-        .slice(0, 20)
-    : [];
-
-  const updateData: Record<string, unknown> = {
-    full_name: body.full_name.trim(),
-    graduation_year: body.graduation_year?.trim() || null,
-    current_role: body.current_role?.trim() || null,
-    current_company: body.current_company?.trim() || null,
-    linkedin_url: body.linkedin_url?.trim() || null,
-    contact_email: body.contact_email?.trim() || null,
-    preferred_contact: body.preferred_contact || "linkedin",
-    opt_status: body.opt_status || "not_confirmed",
-    past_companies: pastCompanies,
-  };
+  const parsed = memberProfileUpdate(body);
+  if (parsed.error) {
+    return NextResponse.json({ error: parsed.error }, { status: 400 });
+  }
+  const updateData = parsed.data!;
+  if (
+    typeof updateData.contact_email === "string" &&
+    isUcsdEmail(updateData.contact_email)
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "UCSD emails expire after graduation. Please use a personal email.",
+      },
+      { status: 400 },
+    );
+  }
 
   const { error } = await supabase
     .from("alumni")
@@ -289,7 +324,10 @@ export async function PUT(request: Request) {
 
   if (error) {
     console.error("Alumni update error:", error.message);
-    return NextResponse.json({ error: "Failed to update profile" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to update profile" },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ success: true });

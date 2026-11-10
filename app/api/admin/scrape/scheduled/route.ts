@@ -37,7 +37,7 @@ export async function POST(request: Request) {
   if (activeRun) {
     return NextResponse.json(
       { message: "A scrape is already running", runId: activeRun.id },
-      { status: 409 }
+      { status: 409 },
     );
   }
 
@@ -48,10 +48,13 @@ export async function POST(request: Request) {
     .not("linkedin_url", "is", null);
 
   if (fetchError) {
-    console.error("Scheduled scrape: failed to fetch alumni:", fetchError.message);
+    console.error(
+      "Scheduled scrape: failed to fetch alumni:",
+      fetchError.message,
+    );
     return NextResponse.json(
       { error: "Failed to fetch alumni data" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -61,7 +64,7 @@ export async function POST(request: Request) {
   for (const a of alumniWithLinkedin || []) {
     if (!a.linkedin_url) continue;
     const normalized = normalizeLinkedInUrl(a.linkedin_url);
-    if (!urlSet.has(normalized)) {
+    if (normalized && !urlSet.has(normalized)) {
       urlSet.add(normalized);
       urls.push(a.linkedin_url.trim());
     }
@@ -94,11 +97,13 @@ export async function POST(request: Request) {
       await registerWebhook(
         runId,
         `${appUrl}/api/admin/scrape/webhook`,
-        webhookSecret
+        webhookSecret,
       );
     }
 
-    console.log(`Scheduled scrape started: ${urls.length} profiles, run ${runId}`);
+    console.log(
+      `Scheduled scrape started: ${urls.length} profiles, run ${runId}`,
+    );
 
     return NextResponse.json({
       message: "Scheduled scrape started",
@@ -110,7 +115,7 @@ export async function POST(request: Request) {
     console.error("Scheduled scrape start error:", err);
     return NextResponse.json(
       { error: "Failed to start scrape" },
-      { status: 502 }
+      { status: 502 },
     );
   }
 }

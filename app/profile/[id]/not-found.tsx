@@ -1,5 +1,4 @@
-import Link from "next/link";
-import Button from "@/components/ui/Button";
+import ButtonLink from "@/components/ui/ButtonLink";
 
 export default function ProfileNotFound() {
   return (
@@ -13,9 +12,9 @@ export default function ProfileNotFound() {
           This alumni profile doesn&apos;t exist or isn&apos;t public.
         </p>
         <div className="mt-6">
-          <Link href="/directory">
-            <Button variant="secondary">Back to Directory</Button>
-          </Link>
+          <ButtonLink href="/directory" variant="secondary">
+            Back to Directory
+          </ButtonLink>
         </div>
       </div>
     </div>

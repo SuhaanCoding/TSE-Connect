@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCachedUser, getCachedAlumniProfile } from "@/lib/supabase/cached";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
+import { publicDirectoryProfile } from "@/lib/directory";
 import DirectoryView from "@/components/directory/DirectoryView";
 
 export default async function DirectoryPage() {
@@ -20,45 +21,41 @@ export default async function DirectoryPage() {
 
   // Parallelize ALL data queries
   const supabase = await createClient();
-  const [alumniResult, yearResult, companyResult, pastResult] = await Promise.all([
-    supabase
-      .from("alumni")
-      .select("*", { count: "exact" })
-      .order("full_name")
-      .range(0, 23),
-    supabase
-      .from("alumni")
-      .select("graduation_year")
-      .not("graduation_year", "is", null),
-    supabase
-      .from("alumni")
-      .select("current_company")
-      .not("current_company", "is", null),
-    supabase
-      .from("alumni")
-      .select("past_companies")
-      .not("past_companies", "eq", "{}"),
-  ]);
+  const [alumniResult, yearResult, companyResult, pastResult] =
+    await Promise.all([
+      supabase
+        .from("alumni")
+        .select("*", { count: "exact" })
+        .order("full_name")
+        .range(0, 23),
+      supabase
+        .from("alumni")
+        .select("graduation_year")
+        .not("graduation_year", "is", null),
+      supabase
+        .from("alumni")
+        .select("current_company")
+        .not("current_company", "is", null),
+      supabase
+        .from("alumni")
+        .select("past_companies")
+        .not("past_companies", "eq", "{}"),
+    ]);
 
   const { data: alumni, count } = alumniResult;
 
   // Sanitize contact info based on viewer opt status
-  const sanitizedAlumni = (alumni || []).map((a) => {
-    if (!viewerOptedIn) {
-      return { ...a, contact_email: null, linkedin_url: null, preferred_contact: "linkedin" };
-    }
-    if (a.opt_status !== "opted_in") {
-      return { ...a, contact_email: null, preferred_contact: "linkedin" };
-    }
-    return a;
-  });
+  const sanitizedAlumni = (alumni || []).map((profile) =>
+    publicDirectoryProfile(profile, viewerOptedIn),
+  );
 
   // Process filter options
   const years = [
     ...new Set(yearResult.data?.map((r) => r.graduation_year).filter(Boolean)),
   ].sort((a, b) => b.localeCompare(a)) as string[];
 
-  const currentCompanies = companyResult.data?.map((r) => r.current_company).filter(Boolean) || [];
+  const currentCompanies =
+    companyResult.data?.map((r) => r.current_company).filter(Boolean) || [];
   const pastCompanyNames = (pastResult.data || [])
     .flatMap((r) => r.past_companies || [])
     .filter(Boolean);
@@ -72,7 +69,9 @@ export default async function DirectoryPage() {
   };
 
   const companies = [
-    ...new Set([...currentCompanies, ...pastCompanyNames].filter(isValidCompany)),
+    ...new Set(
+      [...currentCompanies, ...pastCompanyNames].filter(isValidCompany),
+    ),
   ].sort() as string[];
 
   return (

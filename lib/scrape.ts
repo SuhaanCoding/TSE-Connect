@@ -1,9 +1,14 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import {
   getRunResults,
+  getRunStatus,
   normalizeLinkedInUrl,
   extractProfileUrl,
 } from "@/lib/apify";
+import {
+  careerFromProfile,
+  backgroundFromProfile,
+} from "@/lib/linkedin-profile";
 import type { ScrapeResult } from "@/lib/types";
 
 /**
@@ -12,9 +17,30 @@ import type { ScrapeResult } from "@/lib/types";
  */
 export async function processApifyResults(
   datasetId: string,
-  scrapeRunId: string
+  scrapeRunId: string,
 ): Promise<ScrapeResult> {
   const serviceClient = await createServiceClient();
+
+  const { data: run } = await serviceClient
+    .from("scrape_runs")
+    .select("apify_run_id, profile_count")
+    .eq("id", scrapeRunId)
+    .maybeSingle();
+  if (run?.apify_run_id) {
+    const status = await getRunStatus(run.apify_run_id);
+    if (status.status !== "SUCCEEDED") {
+      const message = status.statusMessage || `Apify run is ${status.status}`;
+      await serviceClient
+        .from("scrape_runs")
+        .update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          error_message: message,
+        })
+        .eq("id", scrapeRunId);
+      throw new Error(message);
+    }
+  }
 
   // Fetch Apify results
   const profiles = await getRunResults(datasetId);
@@ -40,19 +66,12 @@ export async function processApifyResults(
   }
 
   // Build lookup map: normalized LinkedIn URL -> alumni record
-  const urlToAlumni = new Map<
-    string,
-    { id: string; current_role: string | null; current_company: string | null; past_companies: string[] }
-  >();
+  const urlToAlumni = new Map<string, string[]>();
   for (const a of allAlumni || []) {
     if (!a.linkedin_url) continue;
     const normalized = normalizeLinkedInUrl(a.linkedin_url);
-    urlToAlumni.set(normalized, {
-      id: a.id,
-      current_role: a.current_role,
-      current_company: a.current_company,
-      past_companies: a.past_companies || [],
-    });
+    if (!normalized) continue;
+    urlToAlumni.set(normalized, [...(urlToAlumni.get(normalized) || []), a.id]);
   }
 
   // Process each profile result
@@ -75,57 +94,47 @@ export async function processApifyResults(
     }
 
     const normalized = normalizeLinkedInUrl(profileUrl);
-    const alumni = urlToAlumni.get(normalized);
+    const alumniIds = urlToAlumni.get(normalized);
 
-    if (!alumni) {
+    if (!alumniIds) {
       result.noMatch++;
       continue;
     }
 
     result.matched++;
 
-    // Extract career data from experience
-    const experience = profile.experience || [];
-    const currentRole = experience[0]?.position?.trim() || "";
-    const currentCompany = experience[0]?.companyName?.trim() || "";
-
-    // Deduplicate past companies, excluding current company
-    const seen = new Set<string>();
-    if (currentCompany) seen.add(currentCompany.toLowerCase());
-    const pastCompanies: string[] = [];
-    for (let i = 1; i < experience.length; i++) {
-      const company = experience[i]?.companyName?.trim();
-      if (company && !seen.has(company.toLowerCase())) {
-        seen.add(company.toLowerCase());
-        pastCompanies.push(company);
-      }
+    const career = careerFromProfile(profile);
+    const background = backgroundFromProfile(profile);
+    if (!career && !background.about && !background.background) {
+      result.skippedEmpty++;
+      continue; // Error/not-found rows must never erase data or look freshly scraped.
     }
-
-    // Build update — only set fields that have real data
     const updateData: Record<string, unknown> = {
       last_scraped_at: new Date().toISOString(),
     };
+    if (career?.currentRole) updateData.current_role = career.currentRole;
+    if (career?.currentCompany)
+      updateData.current_company = career.currentCompany;
+    if (career && (career.completeHistory || career.pastCompanies.length))
+      updateData.past_companies = career.pastCompanies;
+    if (background.about) updateData.linkedin_about = background.about;
+    if (background.background)
+      updateData.linkedin_background = background.background;
+    for (const id of alumniIds) updates.push({ id, data: updateData });
+  }
 
-    let hasCareerUpdate = false;
-
-    if (currentRole && currentRole.toLowerCase() !== "none") {
-      updateData.current_role = currentRole;
-      hasCareerUpdate = true;
-    }
-    if (currentCompany && currentCompany.toLowerCase() !== "none") {
-      updateData.current_company = currentCompany;
-      hasCareerUpdate = true;
-    }
-    if (pastCompanies.length > 0) {
-      updateData.past_companies = pastCompanies.slice(0, 20);
-      hasCareerUpdate = true;
-    }
-
-    if (!hasCareerUpdate) {
-      result.skippedEmpty++;
-    }
-
-    updates.push({ id: alumni.id, data: updateData });
+  if (updates.length === 0) {
+    const message =
+      "No usable career data matched the alumni URLs. Check the actor output before importing.";
+    await serviceClient
+      .from("scrape_runs")
+      .update({
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        error_message: message,
+      })
+      .eq("id", scrapeRunId);
+    throw new Error(message);
   }
 
   // Batch update in groups of 50
@@ -134,8 +143,8 @@ export async function processApifyResults(
     const batch = updates.slice(i, i + BATCH_SIZE);
     const results = await Promise.all(
       batch.map(({ id, data }) =>
-        serviceClient.from("alumni").update(data).eq("id", id)
-      )
+        serviceClient.from("alumni").update(data).eq("id", id),
+      ),
     );
     for (let j = 0; j < results.length; j++) {
       if (results[j].error) {
@@ -143,7 +152,7 @@ export async function processApifyResults(
         if (errorCount <= 3) {
           console.error(
             `Scrape update failed for ${batch[j].id}:`,
-            results[j].error!.message
+            results[j].error!.message,
           );
         }
       } else {
@@ -152,6 +161,11 @@ export async function processApifyResults(
     }
   }
   result.errors = errorCount;
+
+  result.skippedEmpty += Math.max(
+    0,
+    (run?.profile_count || 0) - result.matched,
+  );
 
   // Update scrape_runs row with results
   await serviceClient

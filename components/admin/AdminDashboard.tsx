@@ -731,7 +731,7 @@ export default function AdminDashboard() {
             <div className="max-w-lg">
               <h2 className="font-heading font-semibold text-lg mb-2">LinkedIn Scrape</h2>
               <p className="text-sm text-text-muted mb-1">
-                Scrape LinkedIn profiles for all alumni with LinkedIn URLs. Career data (role, company, past companies) will be updated automatically via webhook — you can close this tab safely.
+                Scrape LinkedIn profiles for all alumni with LinkedIn URLs. Visible career details will be refreshed automatically; hidden or missing details keep their existing values. Results are imported via webhook — you can close this tab safely.
               </p>
               <p className="text-sm text-text-muted mb-1">
                 A scheduled scrape runs automatically on the <span className="text-accent font-medium">15th of every month</span>.
@@ -739,7 +739,7 @@ export default function AdminDashboard() {
               <p className="text-sm text-text-muted mb-4">
                 <span className="text-accent font-medium">{linkedinCount}</span> alumni with LinkedIn URLs.
                 {linkedinCount > 0 && (
-                  <span className="text-text-muted/60"> Estimated cost: ~${((linkedinCount / 1000) * 4).toFixed(2)}</span>
+                  <span className="text-text-muted/60"> Estimated free-credit usage: ~${((linkedinCount / 1000) * 5).toFixed(2)} plus platform usage; $2 actor charge cap.</span>
                 )}
               </p>
 

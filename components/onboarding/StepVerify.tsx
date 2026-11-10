@@ -33,7 +33,7 @@ export default function StepVerify({
         </h2>
         {prefilled && (
           <p className="mt-2 text-sm text-text-muted">
-            We found your info from TSE records. Feel free to update anything.
+            We found your info from TSE records. Review your details below.
           </p>
         )}
       </div>
@@ -82,9 +82,14 @@ export default function StepVerify({
           id="current_company"
           label="Current Company"
           value={data.current_company}
-          onChange={(e) => onChange("current_company", e.target.value)}
-          placeholder="e.g., Stripe"
+          readOnly
+          aria-describedby="onboarding-company-source"
+          placeholder="Not available yet"
         />
+        <p id="onboarding-company-source" className="text-xs text-text-muted">
+          Companies are synced from LinkedIn. Update your LinkedIn profile to
+          change them; updates appear after the next refresh.
+        </p>
       </div>
     </div>
   );
