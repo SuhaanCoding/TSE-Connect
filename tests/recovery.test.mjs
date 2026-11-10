@@ -108,6 +108,16 @@ test("errors, masks, empty output and deleted roster entries leave data untouche
     assert.equal(plan.outcomes[0].status, "unavailable");
   }
   assert.equal(
+    planProfileImport(
+      [{ inputUrl: person.linkedin_url, about: "**** * ** ****" }],
+      [person],
+      [person.linkedin_url],
+      "primary",
+      at,
+    ).updates.length,
+    0,
+  );
+  assert.equal(
     planProfileImport([profile], [], [person.linkedin_url], "primary", at)
       .outcomes[0].status,
     "unmatched",
@@ -250,4 +260,36 @@ test("cross-provider aliases require the same numeric LinkedIn member ID", () =>
     ).length,
     1,
   );
+});
+
+test("signed-in captures retain their provenance and only update visible source fields", () => {
+  const plan = planProfileImport(
+    [
+      {
+        inputUrl: person.linkedin_url,
+        url: "https://example.com/unrelated",
+        profileUrl: "https://linkedin.com/in/new-handle",
+        projects: [
+          {
+            name: "LinkedIn experience",
+            description: "Researcher at Acme\nBuilt message queues.",
+          },
+        ],
+      },
+    ],
+    [person],
+    [person.linkedin_url],
+    "browser",
+    at,
+  );
+  assert.equal(plan.outcomes[0].source, "browser");
+  assert.equal(
+    plan.updates[0].data.linkedin_url,
+    "https://www.linkedin.com/in/new-handle/",
+  );
+  assert.ok(
+    plan.updates[0].data.linkedin_background.includes("Built message queues."),
+  );
+  assert.equal("current_company" in plan.updates[0].data, false);
+  assert.equal("bio" in plan.updates[0].data, false);
 });

@@ -34,6 +34,8 @@ Apply `20261110090000_scrape_recovery.sql` before this release. Runs reserve a u
 
 Requested and returned URLs are both matched. Stable numeric LinkedIn member IDs can link cross-provider aliases and recover canonical addresses; names alone never join records. Error rows, masks and identity-only results do not receive a fresh timestamp. Only visible, validated fields are written, and incomplete history never clears stored employers. Each input has a receipt showing provider, updated fields, roster IDs and any unresolved reason. History distinguishes partial from complete results and offers per-profile review and a manual retry of unresolved roster profiles. Direct browser roles cannot read operational receipts; admin APIs authenticate and use the service client.
 
+An operator can also verify unresolved URLs in an existing signed-in Chrome session and import the visible professional sections. Those receipts are labeled **Signed-in LinkedIn**, separate from provider results. Such a backfill does not make hidden fields accessible to future server scrapes; subsequent partial results preserve the verified text. Unavailable pages and profiles with no visible professional sections retain explicit review reasons.
+
 When `APIFY_WEBHOOK_SECRET` is configured, callbacks are attached atomically in the actor-start request ([Apify Run Actor documentation](https://docs.apify.com/api/v2/actors-runs-post)). Webhooks and the admin poller use the same processor. If callbacks are not configured, the admin page says so and must stay open to finish processing. Transient import failures keep the run resumable and release its lease. Duplicate callbacks cannot overwrite completed runs or start repeated fallback actors.
 
 ## Checks

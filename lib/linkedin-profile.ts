@@ -7,9 +7,10 @@ function object(value: unknown): JsonObject {
 }
 
 function text(value: unknown): string {
-  return typeof value === "string" && !/^(none|null|n\/a)$/i.test(value.trim())
-    ? value.replace(/\*{3,}/g, "").trim()
-    : "";
+  if (typeof value !== "string" || /^(none|null|n\/a)$/i.test(value.trim()))
+    return "";
+  const clean = value.replace(/\*{3,}/g, "").trim();
+  return /[\p{L}\p{N}]/u.test(clean) ? clean : "";
 }
 
 function companyText(value: unknown): string {
@@ -112,12 +113,11 @@ export function normalizeLinkedInUrl(url: string): string {
 
 export function extractProfileUrl(value: unknown): string | null {
   const row = object(value);
-  const url =
-    text(row.url) ||
-    text(row.profileUrl) ||
-    text(row.linkedInUrl) ||
-    text(row.linkedinUrl);
-  return url && normalizeLinkedInUrl(url) ? url : null;
+  return (
+    [row.url, row.profileUrl, row.linkedInUrl, row.linkedinUrl]
+      .map(text)
+      .find((url) => normalizeLinkedInUrl(url)) || null
+  );
 }
 
 /** Both the requested URL and the returned URL identify redirected profiles. */
@@ -274,7 +274,7 @@ export interface ScrapeOutcome {
   name: string;
   alumniIds: string[];
   status: "updated" | "unavailable" | "unmatched" | "write_failed";
-  source: "primary" | "recovery";
+  source: "primary" | "recovery" | "browser";
   fields: string[];
   reason: string | null;
 }
@@ -290,7 +290,7 @@ export function planProfileImport(
   profiles: unknown[],
   alumni: ScrapeAlumnus[],
   inputUrls: string[],
-  source: "primary" | "recovery",
+  source: "primary" | "recovery" | "browser",
   refreshedAt: string,
 ) {
   const byUrl = new Map<string, ScrapeAlumnus[]>();

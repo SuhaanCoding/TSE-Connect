@@ -81,9 +81,11 @@ export default function ScrapeRunDetails({
                           ? "Unmatched URL"
                           : "Unavailable"}{" "}
                     ·{" "}
-                    {result.source === "recovery"
-                      ? "Recovery provider"
-                      : "Primary provider"}
+                    {result.source === "browser"
+                      ? "Signed-in LinkedIn"
+                      : result.source === "recovery"
+                        ? "Recovery provider"
+                        : "Primary provider"}
                   </span>
                 </div>
                 <p className="break-all text-xs text-text-muted">
