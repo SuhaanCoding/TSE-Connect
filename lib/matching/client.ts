@@ -49,16 +49,49 @@ export class LocalMatchClient {
           AbortSignal.timeout(25000),
         ]),
       });
-      const index = await response.json().catch(() => null);
+      const body = await response.text();
+      let index;
+      try {
+        index = JSON.parse(body);
+      } catch {
+        // Operational metadata only: never log an index body, resume or goal.
+        console.warn(
+          "TSE matching index decode failed",
+          JSON.stringify({
+            status: response.status,
+            characters: body.length,
+            contentType: response.headers.get("content-type"),
+          }),
+        );
+        throw new Error("Couldn’t read the alumni index download. Try again.");
+      }
       if (
         !response.ok ||
         !index ||
         !Array.isArray(index.documents) ||
         !Array.isArray(index.data)
-      )
+      ) {
+        console.warn(
+          "TSE matching index shape rejected",
+          JSON.stringify({
+            status: response.status,
+            characters: body.length,
+            keys:
+              index && typeof index === "object"
+                ? Object.keys(index).slice(0, 12)
+                : [],
+            documents: Array.isArray(index?.documents)
+              ? index.documents.length
+              : typeof index?.documents,
+            profiles: Array.isArray(index?.data)
+              ? index.data.length
+              : typeof index?.data,
+          }),
+        );
         throw new Error(
           index?.error || "Couldn’t load the alumni index. Try again.",
         );
+      }
       if (index.modelVersion !== ENCODER.version)
         throw new Error(
           "The matching model changed. Reload this page to get the latest version.",
