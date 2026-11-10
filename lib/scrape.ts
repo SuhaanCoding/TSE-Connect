@@ -197,7 +197,9 @@ export function createScrapeService(
     try {
       const { data: alumni, error: alumniError } = await db
         .from("alumni")
-        .select("id,full_name,linkedin_url,graduation_year");
+        .select(
+          "id,full_name,linkedin_url,graduation_year,current_company,current_role",
+        );
       if (alumniError)
         throw new Error(
           "Could not read the alumni roster; no profile updates were attempted.",
@@ -229,22 +231,43 @@ export function createScrapeService(
           await Promise.all(
             plan.updates
               .slice(offset, offset + 25)
-              .map(async ({ id, inputUrl, data, expectedGraduationYear }) => {
-                let write = db.from("alumni").update(data).eq("id", id);
-                if (expectedGraduationYear)
-                  write = write.eq("graduation_year", expectedGraduationYear);
-                const { data: saved, error: writeError } = await write
-                  .select("id")
-                  .maybeSingle();
-                if (writeError || !saved) {
-                  const receipt = plan.outcomes.find(
-                    (item) => item.inputUrl === inputUrl,
-                  )!;
-                  receipt.status = "write_failed";
-                  receipt.reason =
-                    "A roster update failed. Existing member-written fields were not changed; retry this profile.";
-                }
-              }),
+              .map(
+                async ({
+                  id,
+                  inputUrl,
+                  data,
+                  expectedGraduationYear,
+                  expectedCareer,
+                }) => {
+                  let write = db.from("alumni").update(data).eq("id", id);
+                  if (expectedCareer) {
+                    write =
+                      expectedCareer.company === null
+                        ? write.is("current_company", null)
+                        : write.eq("current_company", expectedCareer.company);
+                    write =
+                      expectedCareer.role === null
+                        ? write.is("current_role", null)
+                        : write.eq("current_role", expectedCareer.role);
+                  }
+                  if (expectedGraduationYear)
+                    write = write.eq("graduation_year", expectedGraduationYear);
+                  const { data: saved, error: writeError } = await write
+                    .select("id")
+                    .maybeSingle();
+                  if (writeError || !saved) {
+                    const receipt = plan.outcomes.find(
+                      (item) => item.inputUrl === inputUrl,
+                    )!;
+                    receipt.status = "write_failed";
+                    receipt.reason =
+                      "A roster update failed. Existing member-written fields were not changed; retry this profile.";
+                  } else {
+                    const person = alumni?.find((person) => person.id === id);
+                    if (person) Object.assign(person, data);
+                  }
+                },
+              ),
           );
         }
         if (state.status !== "SUCCEEDED")

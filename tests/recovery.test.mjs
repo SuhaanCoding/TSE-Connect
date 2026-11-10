@@ -293,3 +293,108 @@ test("signed-in captures retain their provenance and only update visible source 
   assert.equal("current_company" in plan.updates[0].data, false);
   assert.equal("bio" in plan.updates[0].data, false);
 });
+
+test("changing employer without a visible title clears the old employer title atomically", () => {
+  const existing = {
+    ...person,
+    current_company: "Triton Consulting Group (TCG)",
+    current_role: "Vice President of Technology",
+  };
+  const output = {
+    inputUrl: person.linkedin_url,
+    currentPosition: { companyName: "General Atomics", title: null },
+  };
+  const plan = planProfileImport(
+    [output],
+    [existing],
+    [person.linkedin_url],
+    "primary",
+    at,
+  );
+  assert.equal(plan.updates[0].data.current_company, "General Atomics");
+  assert.equal(plan.updates[0].data.current_role, null);
+  assert.deepEqual(plan.updates[0].expectedCareer, {
+    company: existing.current_company,
+    role: existing.current_role,
+  });
+  assert.ok(plan.outcomes[0].fields.includes("current_role"));
+  const sameEmployer = planProfileImport(
+    [output],
+    [
+      {
+        ...existing,
+        current_company: "General Atomics",
+        current_role: "Researcher",
+      },
+    ],
+    [person.linkedin_url],
+    "primary",
+    at,
+  );
+  assert.equal("current_role" in sameEmployer.updates[0].data, false);
+  assert.equal(sameEmployer.updates[0].expectedCareer, undefined);
+});
+test("concurrent recovery positions select a title belonging to the selected employer", () => {
+  const current = careerFromProfile({
+    company: "General Atomics",
+    title: "Vice President of Technology",
+    currentPositions: [
+      {
+        company: "Triton Consulting Group (TCG)",
+        title: "Vice President of Technology",
+      },
+      {
+        company: "General Atomics",
+        title: "Data Science & Machine Learning Researcher",
+      },
+    ],
+  });
+  assert.equal(current.currentCompany, "General Atomics");
+  assert.equal(
+    current.currentRole,
+    "Data Science & Machine Learning Researcher",
+  );
+  const hidden = careerFromProfile({
+    company: "General Atomics",
+    title: "Vice President of Technology",
+    currentPositions: [
+      {
+        company: "Triton Consulting Group (TCG)",
+        title: "Vice President of Technology",
+      },
+      { company: "General Atomics", title: null },
+    ],
+  });
+  assert.equal(hidden.currentRole, "");
+});
+test("grouped positions match the primary employer and ignore another employer headline", () => {
+  const result = careerFromProfile({
+    profile: {
+      company: { name: "General Atomics, Inc." },
+      title: "Vice President of Technology",
+      position_groups: [
+        {
+          company: { name: "Triton Consulting Group (TCG)" },
+          date: { start: { year: 2024 } },
+          profile_positions: [{ title: "Vice President of Technology" }],
+        },
+        {
+          company: { name: "General Atomics" },
+          date: { start: { year: 2026 } },
+          profile_positions: [
+            { title: "Research Assistant", date: { end: { year: 2025 } } },
+            {
+              title: "Data Science & Machine Learning Researcher",
+              date: { start: { year: 2026 } },
+            },
+          ],
+        },
+      ],
+    },
+  });
+  assert.equal(result.currentCompany, "General Atomics, Inc.");
+  assert.equal(
+    result.currentRole,
+    "Data Science & Machine Learning Researcher",
+  );
+});

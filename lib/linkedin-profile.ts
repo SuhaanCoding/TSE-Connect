@@ -1,4 +1,5 @@
 import { agreedGraduationEvidence, isSchoolLabel } from "./education";
+import { normalizeCompany } from "./company-taxonomy";
 
 type JsonObject = Record<string, unknown>;
 
@@ -182,14 +183,37 @@ export function careerFromProfile(value: unknown): {
       ? row.experience.map(object)
       : [];
     currentCompany = companyText(row.company);
-    const current = row.currentPositions
+    const positions = row.currentPositions
       .map(object)
-      .find(
+      .filter(
         (entry) =>
-          companyText(entry.company).toLowerCase() ===
-          currentCompany.toLowerCase(),
+          entry.current !== false &&
+          (!text(entry.endDate) ||
+            /^(present|current|now)$/i.test(text(entry.endDate))),
       );
-    currentRole = currentCompany ? text(row.title) || text(current?.title) : "";
+    const current =
+      positions.find(
+        (entry) =>
+          currentCompany &&
+          normalizeCompany(companyText(entry.company)) ===
+            normalizeCompany(currentCompany),
+      ) ||
+      (!currentCompany
+        ? positions.find((entry) => companyText(entry.company))
+        : undefined);
+    if (!currentCompany && current)
+      currentCompany = companyText(current.company);
+    const matchingExperience = experience.find(
+      (entry) =>
+        entry.current === true &&
+        normalizeCompany(companyText(entry.company)) ===
+          normalizeCompany(currentCompany),
+    );
+    // A profile headline can describe another concurrent job. Only take a
+    // title from the selected employer's explicit current experience.
+    currentRole = currentCompany
+      ? text(current?.title) || text(matchingExperience?.title)
+      : "";
     completeHistory =
       experience.length > 0 &&
       experience.every(
@@ -206,18 +230,29 @@ export function careerFromProfile(value: unknown): {
     const groups = Array.isArray(profile.position_groups)
       ? profile.position_groups.map(object)
       : [];
-    const current = groups.find((group) => {
+    const currentGroups = groups.filter((group) => {
       const date = object(group.date);
       return date.start && !date.end;
     });
-    currentCompany =
-      companyText(object(profile.company).name) ||
-      companyText(object(current?.company).name);
+    currentCompany = companyText(object(profile.company).name);
+    const current =
+      currentGroups.find(
+        (group) =>
+          currentCompany &&
+          normalizeCompany(companyText(object(group.company).name)) ===
+            normalizeCompany(currentCompany),
+      ) || (!currentCompany ? currentGroups[0] : undefined);
+    if (!currentCompany)
+      currentCompany = companyText(object(current?.company).name);
     const positions = Array.isArray(current?.profile_positions)
       ? current.profile_positions.map(object)
       : [];
     currentRole = currentCompany
-      ? text(profile.title) || text(positions[0]?.title)
+      ? text(
+          positions.find(
+            (position) => !object(position.date).end && text(position.title),
+          )?.title,
+        )
       : "";
     pastCompanies = groups
       .filter((group) => object(group.date).end)
@@ -286,6 +321,8 @@ export interface ScrapeAlumnus {
   full_name: string;
   linkedin_url: string | null;
   graduation_year?: string | null;
+  current_company?: string | null;
+  current_role?: string | null;
 }
 
 /** Pure import planning: never match on a person's name or write authored fields. */
@@ -307,6 +344,7 @@ export function planProfileImport(
     inputUrl: string;
     data: Record<string, unknown>;
     expectedGraduationYear?: string;
+    expectedCareer?: { company: string | null; role: string | null };
   }[] = [];
   for (const inputUrl of [
     ...new Set(inputUrls.map(normalizeLinkedInUrl).filter(Boolean)),
@@ -401,12 +439,24 @@ export function planProfileImport(
     const returnedUrl = redirect
       ? normalizeLinkedInUrl(extractProfileUrl(redirect.profile) || "")
       : "";
-    const data = { ...best?.data, last_scraped_at: refreshedAt };
+    const data: Record<string, unknown> = {
+      ...best?.data,
+      last_scraped_at: refreshedAt,
+    };
     if (returnedUrl && returnedUrl !== inputUrl) {
       Object.assign(data, { linkedin_url: `https://www.${returnedUrl}/` });
       outcome.fields.push("linkedin_url");
     }
     for (const person of best ? people : graduating) {
+      const clearStaleRole =
+        !!data.current_company &&
+        !data.current_role &&
+        person.current_company !== undefined &&
+        !!person.current_role &&
+        normalizeCompany(String(data.current_company)) !==
+          normalizeCompany(person.current_company || "");
+      if (clearStaleRole && !outcome.fields.includes("current_role"))
+        outcome.fields.push("current_role");
       const changeGraduation =
         graduation && isSchoolLabel(person.graduation_year);
       updates.push({
@@ -414,10 +464,19 @@ export function planProfileImport(
         inputUrl,
         data: {
           ...data,
+          ...(clearStaleRole ? { current_role: null } : {}),
           ...(changeGraduation ? { graduation_year: graduation.year } : {}),
         },
         ...(changeGraduation
           ? { expectedGraduationYear: person.graduation_year! }
+          : {}),
+        ...(clearStaleRole
+          ? {
+              expectedCareer: {
+                company: person.current_company ?? null,
+                role: person.current_role ?? null,
+              },
+            }
           : {}),
       });
     }
