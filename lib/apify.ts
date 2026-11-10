@@ -14,27 +14,31 @@ const MAX_RUN_CHARGE_USD = 2;
 const RECOVERY_ACTOR = "blueskyscraper~linkedin-profile-details-scraper";
 type Callback = { url: string; secret: string };
 
+export function webhookOptions(callback: Callback) {
+  return {
+    eventTypes: [
+      "ACTOR.RUN.SUCCEEDED",
+      "ACTOR.RUN.FAILED",
+      "ACTOR.RUN.ABORTED",
+      "ACTOR.RUN.TIMED_OUT",
+    ],
+    requestUrl: callback.url,
+    shouldInterpolateStrings: true,
+    doNotRetry: false,
+    payloadTemplate: JSON.stringify({
+      runId: "{{resource.id}}",
+      datasetId: "{{resource.defaultDatasetId}}",
+      status: "{{resource.status}}",
+      secret: callback.secret,
+    }),
+  };
+}
+
 function callbackParam(callback?: Callback) {
   if (!callback) return undefined;
-  return Buffer.from(
-    JSON.stringify([
-      {
-        eventTypes: [
-          "ACTOR.RUN.SUCCEEDED",
-          "ACTOR.RUN.FAILED",
-          "ACTOR.RUN.ABORTED",
-          "ACTOR.RUN.TIMED_OUT",
-        ],
-        requestUrl: callback.url,
-        payloadTemplate: JSON.stringify({
-          runId: "{{resource.id}}",
-          datasetId: "{{resource.defaultDatasetId}}",
-          status: "{{resource.status}}",
-          secret: callback.secret,
-        }),
-      },
-    ]),
-  ).toString("base64");
+  return Buffer.from(JSON.stringify([webhookOptions(callback)])).toString(
+    "base64",
+  );
 }
 
 function apiFetch(url: string, init: RequestInit = {}) {
@@ -262,20 +266,8 @@ export async function registerWebhook(
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      eventTypes: [
-        "ACTOR.RUN.SUCCEEDED",
-        "ACTOR.RUN.FAILED",
-        "ACTOR.RUN.ABORTED",
-        "ACTOR.RUN.TIMED_OUT",
-      ],
+      ...webhookOptions({ url: webhookUrl, secret }),
       condition: { actorRunId: runId },
-      requestUrl: webhookUrl,
-      payloadTemplate: JSON.stringify({
-        runId: "{{resource.id}}",
-        datasetId: "{{resource.defaultDatasetId}}",
-        status: "{{resource.status}}",
-        secret,
-      }),
     }),
   });
 

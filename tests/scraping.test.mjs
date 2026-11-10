@@ -6,6 +6,23 @@ import {
   backgroundFromProfile,
 } from "../lib/linkedin-profile.ts";
 import { verifyScraperPricing, isLimitedScrape } from "../lib/scrape-guards.ts";
+import { webhookOptions } from "../lib/apify.ts";
+
+test("automatic callbacks interpolate real run IDs and retry interrupted deliveries", () => {
+  const webhook = webhookOptions({
+    url: "https://example.com/callback",
+    secret: "test-only-secret",
+  });
+  assert.equal(webhook.shouldInterpolateStrings, true);
+  assert.equal(webhook.doNotRetry, false);
+  assert.deepEqual(JSON.parse(webhook.payloadTemplate), {
+    runId: "{{resource.id}}",
+    datasetId: "{{resource.defaultDatasetId}}",
+    status: "{{resource.status}}",
+    secret: "test-only-secret",
+  });
+  assert.ok(webhook.eventTypes.includes("ACTOR.RUN.TIMED_OUT"));
+});
 
 test("LinkedIn matching handles regional domains and rejects unrelated URLs", () => {
   assert.equal(
