@@ -164,7 +164,7 @@ export async function processApifyResults(
 
   result.skippedEmpty += Math.max(
     0,
-    (run?.profile_count || 0) - result.matched,
+    (run?.profile_count || 0) - profiles.length,
   );
 
   // Update scrape_runs row with results

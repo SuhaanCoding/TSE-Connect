@@ -12,6 +12,17 @@ function text(value: unknown): string {
     : "";
 }
 
+function profileDescription(value: unknown): string {
+  // Logged-out LinkedIn pages can append their sign-in form to About text.
+  // Match the form's consecutive labels, not ordinary prose about signing in.
+  return text(value)
+    .split(
+      /(?:^|\n)\s*Welcome back\s*\n\s*Email or phone\s*\n\s*Password\b/i,
+    )[0]
+    .replace(/(?:^|\n)\s*see (?:more|less)\s*$/i, "")
+    .trim();
+}
+
 export function backgroundFromProfile(value: unknown): {
   about: string;
   background: string;
@@ -20,13 +31,15 @@ export function backgroundFromProfile(value: unknown): {
   if (row.error || (row.status && row.status !== "success"))
     return { about: "", background: "" };
   const profile = row.profile ? object(row.profile) : row;
-  const about = (text(profile.about) || text(profile.summary)).slice(0, 6000);
+  const about = (
+    profileDescription(profile.about) || profileDescription(profile.summary)
+  ).slice(0, 6000);
   const sections: string[] = [];
   const experience = Array.isArray(profile.experience)
     ? profile.experience.map(object)
     : [];
   for (const role of experience) {
-    const description = text(role.description);
+    const description = profileDescription(role.description);
     if (!description) continue;
     const heading = [
       text(role.title) || text(role.position),
@@ -42,7 +55,7 @@ export function backgroundFromProfile(value: unknown): {
       if (!Array.isArray(group.profile_positions)) continue;
       for (const value of group.profile_positions) {
         const role = object(value);
-        const description = text(role.description);
+        const description = profileDescription(role.description);
         if (description)
           sections.push(
             [
@@ -58,7 +71,7 @@ export function backgroundFromProfile(value: unknown): {
   if (Array.isArray(profile.projects))
     for (const value of profile.projects) {
       const project = object(value);
-      const description = text(project.description);
+      const description = profileDescription(project.description);
       if (description)
         sections.push(
           [text(project.title) || text(project.name), description]

@@ -56,7 +56,17 @@ test("public-page results update visible current employers without erasing hidde
 });
 
 test("a missing current position cannot promote an ended job to current employer", () => {
-  const result = careerFromProfile({currentPosition: null, experience: [{title:"Engineer",companyName:"Former Employer",startDate:"2020-01",endDate:"2021-01"}]});
+  const result = careerFromProfile({
+    currentPosition: null,
+    experience: [
+      {
+        title: "Engineer",
+        companyName: "Former Employer",
+        startDate: "2020-01",
+        endDate: "2021-01",
+      },
+    ],
+  });
   assert.equal(result.currentCompany, "");
   assert.deepEqual(result.pastCompanies, ["Former Employer"]);
 });
@@ -106,6 +116,32 @@ test("scraping captures About, job descriptions and projects without importing m
   assert.deepEqual(
     backgroundFromProfile({ error: "Blocked", about: "invalid" }),
     { about: "", background: "" },
+  );
+});
+
+test("LinkedIn sign-in forms cannot pollute About text or project descriptions", () => {
+  const form =
+    "\n\nsee more\n\nWelcome back\n\nEmail or phone\n\nPassword\n\nShow\n\nForgot password?\n\nSign in";
+  const result = backgroundFromProfile({
+    about: `I build developer tools…${form}`,
+    projects: [
+      {
+        title: "Authentication",
+        description: `Designed a sign in flow.${form}`,
+      },
+    ],
+  });
+  assert.equal(result.about, "I build developer tools…");
+  assert.equal(result.background, "Authentication\nDesigned a sign in flow.");
+  assert.deepEqual(backgroundFromProfile({ about: form }), {
+    about: "",
+    background: "",
+  });
+  assert.equal(
+    backgroundFromProfile({
+      about: "Welcome back to my project. I built a sign in form.",
+    }).about,
+    "Welcome back to my project. I built a sign in form.",
   );
 });
 
