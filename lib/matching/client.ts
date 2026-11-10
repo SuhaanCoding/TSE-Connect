@@ -41,7 +41,7 @@ export class LocalMatchClient {
   }>;
   constructor(progress: (message: string) => void, lexicalOnly = false) {
     this.start = (async () => {
-      progress("Preparing the alumni index…");
+      progress("Preparing your matches…");
       const query = new URLSearchParams({
         mode: "semantic",
         format: "paged-v1",
@@ -93,7 +93,7 @@ export class LocalMatchClient {
           );
         seen.add(next);
         progress(
-          `Loading alumni background · ${index.documents.length} of ${index.documentsTotal} passages`,
+          `Loading matches · ${Math.round((index.documents.length / index.documentsTotal) * 100)}%`,
         );
         const page = await download(next, index.revision);
         if (

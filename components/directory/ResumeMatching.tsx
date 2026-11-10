@@ -120,11 +120,10 @@ export default function ResumeMatching(props: Props) {
             id="resume-matching-title"
             className="font-heading text-base font-semibold"
           >
-            Go beyond shared words
+            Personalize your matches
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-text-muted">
-            Compare actual projects and experience. Private matching runs on
-            your device.
+            Use your profile, resume, or a goal.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -156,18 +155,16 @@ export default function ResumeMatching(props: Props) {
       </div>
       {!props.enabled && (
         <p className="mt-2 text-xs text-text-muted">
-          Deeper matching downloads about 55 MB on first use and caches the
-          model when your browser allows it. On a slow connection, switch to
-          private word matching for a smaller download.
+          First use downloads ~55 MB.
         </p>
       )}
-      {props.enabled && (
+      {props.enabled && (props.busy || !props.failed) && (
         <p role="status" className="mt-3 text-xs text-accent-light">
           {props.busy
             ? props.progress || "Matching on your device…"
             : props.activeResume
-              ? "Using your resume and goal. Nothing was uploaded or added to your profile."
-              : "Matching your profile and search on this device."}
+              ? "Your experience is applied."
+              : "Using your profile."}
         </p>
       )}
       {props.warning && (
@@ -194,14 +191,12 @@ export default function ResumeMatching(props: Props) {
         className="mt-4 border-t border-border pt-3"
       >
         <summary className="cursor-pointer rounded text-sm text-accent-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-          Use a resume or set a goal{props.enabled && applied && " · applied"}
+          Add a resume or goal{props.enabled && applied && " · applied"}
         </summary>
         <div className="mt-4 space-y-4">
           <p className="text-xs leading-relaxed text-text-muted">
-            Your resume and goal stay in this tab’s memory. TSE doesn’t send
-            them to its server or an AI provider, save them in browser storage,
-            or publish them as your bio. Remove them below when you’re done.
-            Matching works best with English text.
+            Your resume and goal stay on this device and are cleared when you
+            leave.
           </p>
           <div>
             <label
@@ -235,8 +230,8 @@ export default function ResumeMatching(props: Props) {
               {reading
                 ? "Reading the file on your device…"
                 : filename
-                  ? `${filename} · text extracted. Review it below.`
-                  : "Scanned or password-protected PDF? Paste selectable text below instead."}
+                  ? `${filename} · ready to review`
+                  : "Or paste your experience below."}
             </p>
           </div>
           <div>
@@ -270,8 +265,7 @@ export default function ResumeMatching(props: Props) {
             />
             <p id="resume-text-help" className="mt-1 text-xs text-text-muted">
               {resume.length.toLocaleString()} /{" "}
-              {RESUME_LIMITS.characters.toLocaleString()} characters. Contact
-              details and links are excluded from matching.
+              {RESUME_LIMITS.characters.toLocaleString()} characters
             </p>
           </div>
           <div>
@@ -300,8 +294,7 @@ export default function ResumeMatching(props: Props) {
               className="mt-2 min-h-24 w-full resize-none rounded-lg border border-border bg-input-bg p-3 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-accent"
             />
             <p className="mt-1 text-xs text-text-muted">
-              Optional. Your goal steers matching beyond what you have already
-              done. A directory search takes priority while it is filled in.
+              Optional. Tell us what you want to explore.
             </p>
           </div>
           {error && (

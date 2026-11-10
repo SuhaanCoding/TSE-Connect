@@ -89,11 +89,6 @@ export default function NetworkExplorer({
   const [result, setResult] = useState<Result | null>(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState<string | null>(null);
-  const [shortlist, setShortlist] = useState<NetworkProfile[]>([]),
-    [shortlistError, setShortlistError] = useState(""),
-    [notice, setNotice] = useState("");
-  const [shortlistReady, setShortlistReady] = useState(false);
-  const [shortlistOpen, setShortlistOpen] = useState(false);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [draftPerson, setDraftPerson] = useState<NetworkProfile | null>(null),
     [draft, setDraft] = useState(""),
@@ -103,8 +98,7 @@ export default function NetworkExplorer({
     draftPanel = useRef<HTMLDivElement>(null);
   const draftTrigger = useRef<HTMLElement | null>(null);
   const immediate = useRef(false);
-  const previous = useRef<string[]>([]),
-    storageLoaded = useRef("");
+  const previous = useRef<string[]>([]);
   const lastFilters = useRef("");
   const change = (partial: Partial<NetworkFilters>) => {
     setFilters((old) => ({ ...old, ...partial }));
@@ -230,71 +224,6 @@ export default function NetworkExplorer({
   ]);
   const viewer = result?.viewer;
   useEffect(() => {
-    if (!viewer?.id) return;
-    const id = viewer.id;
-    const controller = new AbortController();
-    storageLoaded.current = "";
-    // Restore this viewer’s external shortlist before enabling writes.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setShortlistReady(false);
-    setShortlist([]);
-    setShortlistError("");
-    let ids: string[] = [];
-    try {
-      const saved = JSON.parse(
-        localStorage.getItem(`tse-outreach-${id}`) || "[]",
-      );
-      if (Array.isArray(saved))
-        ids = saved.filter((value) => typeof value === "string").slice(0, 3);
-    } catch {
-      setShortlistError(
-        "Your browser couldn’t restore the shortlist. You can start a new one.",
-      );
-    }
-    if (!ids.length) {
-      storageLoaded.current = id;
-      setShortlistReady(true);
-      return;
-    }
-    const qs = new URLSearchParams({ mode: "shortlist" });
-    ids.forEach((value) => qs.append("id", value));
-    fetch(`/api/alumni/matches?${qs}`, {
-      signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]),
-      cache: "no-store",
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error();
-        const json = await response.json();
-        if (!controller.signal.aborted) {
-          setShortlist(json.data);
-          storageLoaded.current = id;
-          setShortlistReady(true);
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setShortlistError(
-            "Couldn’t restore your saved shortlist. Reload to retry; it hasn’t been erased.",
-          );
-      });
-    return () => controller.abort();
-  }, [viewer?.id]);
-  useEffect(() => {
-    if (!viewer?.id || storageLoaded.current !== viewer.id) return;
-    try {
-      localStorage.setItem(
-        `tse-outreach-${viewer.id}`,
-        JSON.stringify(shortlist.map((person) => person.id)),
-      );
-    } catch {
-      // Storage failures must remain visible beside the shortlist.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setShortlistError(
-        "This browser can’t save your shortlist. It will last until you leave this page.",
-      );
-    }
-  }, [shortlist, viewer?.id]);
-  useEffect(() => {
     if (draftField.current) {
       draftField.current.style.height = "auto";
       draftField.current.style.height = `${draftField.current.scrollHeight}px`;
@@ -310,25 +239,6 @@ export default function NetworkExplorer({
       query: "",
       optedOnly: false,
     });
-  const toggleShortlist = (person: NetworkProfile) => {
-    if (!viewer?.id) return;
-    const saved = shortlist.some((item) => item.id === person.id);
-    if (!saved && shortlist.length >= 3) {
-      setNotice(
-        "Your shortlist has three people. Remove someone before adding another.",
-      );
-      return;
-    }
-    setShortlist((old) =>
-      saved ? old.filter((item) => item.id !== person.id) : [...old, person],
-    );
-    if (!saved) setShortlistOpen(true);
-    setNotice(
-      saved
-        ? `${person.full_name} removed from your shortlist.`
-        : `${person.full_name} added to your shortlist.`,
-    );
-  };
   const openDraft = (person: NetworkProfile) => {
     draftTrigger.current =
       document.activeElement instanceof HTMLElement
@@ -369,9 +279,7 @@ export default function NetworkExplorer({
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(draft);
-      setCopyStatus(
-        "Draft copied. Review and send it yourself through an available contact link.",
-      );
+      setCopyStatus("Copied.");
     } catch {
       setCopyStatus("Copy didn’t work. Select the text and copy it manually.");
       draftField.current?.focus();
@@ -383,96 +291,6 @@ export default function NetworkExplorer({
     !!viewer?.optedIn && person.opt_status !== "opted_out";
   return (
     <div className="space-y-6">
-      <section
-        className="rounded-xl border border-border bg-surface p-5 md:p-6"
-        aria-labelledby="discovery-title"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-2xl">
-            <p className="mb-2 text-xs font-medium text-accent-light">
-              A few good conversations
-            </p>
-            <h2
-              id="discovery-title"
-              className="font-heading text-2xl font-bold tracking-tight"
-            >
-              Find your next conversation.
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-              Rank all alumni around your interests, or discover someone
-              unexpected.
-            </p>
-          </div>
-          <Link
-            href="/settings"
-            className="rounded text-xs text-accent-light underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            Tune my bio & keywords
-          </Link>
-        </div>
-        <div className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-text-muted">
-          <strong className="font-medium text-foreground">
-            Proxy ranking · not a prediction.
-          </strong>{" "}
-          Profile text, company categories and career details are incomplete
-          signals. Rankings help you explore; they don’t predict replies,
-          referrals or anyone’s value. Verify details on LinkedIn.
-        </div>
-        {viewer && !viewer.hasProfileText && (
-          <p className="mt-3 text-xs text-accent-light">
-            Add a bio or keywords in Settings for better personal matches. For
-            now, we use your available LinkedIn background.
-          </p>
-        )}
-      </section>
-      <ResumeMatching
-        wordOnly={result?.engine === "lexical"}
-        failed={!!error}
-        enabled={localEnabled}
-        busy={pending}
-        progress={localProgress}
-        warning={localWarning}
-        activeResume={!!resumeText || !!personalGoal}
-        onEnable={() => restartLocal(false)}
-        onDisable={() => {
-          matcher.current?.dispose();
-          matcher.current = null;
-          setLocalEnabled(false);
-          setLocalWarning("");
-        }}
-        onLexical={() => restartLocal(true)}
-        onRefresh={() => restartLocal(lexicalOnly)}
-        onApply={(text, goal) => {
-          setResumeText(text);
-          setPersonalGoal(goal);
-          setLocalEnabled(true);
-          setPage(1);
-          setMode("ranked");
-          previous.current = [];
-        }}
-        onForget={() => {
-          matcher.current?.dispose();
-          matcher.current = null;
-          setResumeText("");
-          setPersonalGoal("");
-          setLocalEnabled(false);
-          setLocalWarning("");
-          setPage(1);
-          setMode("ranked");
-          previous.current = [];
-        }}
-      />
-      {localEnabled && result?.engine && !pending && (
-        <p className="text-xs text-text-muted" role="status">
-          {result.engine === "semantic"
-            ? "Meaning + word matching"
-            : "Private word matching"}{" "}
-          ·{" "}
-          {result.engine === "semantic"
-            ? `${result.semanticReady ?? 0} of ${result.poolCount} people have prepared background text. Missing profiles remain in the ranking.`
-            : "No model download needed. Everyone remains in the ranking."}
-        </p>
-      )}
       <SearchBar
         value={filters.query}
         onChange={(query) => change({ query })}
@@ -482,13 +300,9 @@ export default function NetworkExplorer({
           setRetry((value) => value + 1);
         }}
       />
-      <p className="text-xs text-text-muted">
-        Search reorders everyone. Company, category and year filters narrow the
-        list.
-      </p>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <label className="space-y-2 text-xs text-text-secondary">
-          <span>Conversation goal</span>
+          <span>Focus</span>
           <select
             className={selectClass}
             value={filters.goal}
@@ -518,7 +332,7 @@ export default function NetworkExplorer({
           </select>
         </label>
         <label className="space-y-2 text-xs text-text-secondary">
-          <span>Add a company filter</span>
+          <span>Company</span>
           <select
             className={selectClass}
             value=""
@@ -560,12 +374,7 @@ export default function NetworkExplorer({
         </label>
       </div>
       <div className="space-y-3">
-        <p className="text-xs text-text-muted">
-          Explore company categories{" "}
-          <span className="text-text-secondary">
-            · multiple selections include either category
-          </span>
-        </p>
+        <p className="text-xs text-text-muted">Categories</p>
         <div id="company-categories" className="flex flex-wrap gap-2">
           {COMPANY_CATEGORIES.filter(
             (category, index) =>
@@ -609,13 +418,6 @@ export default function NetworkExplorer({
               ? "Fewer categories"
               : `All ${COMPANY_CATEGORIES.length} categories`}
           </Button>
-          {result?.companyCoverage && (
-            <p className="text-xs text-text-muted">
-              Tags cover {result.companyCoverage.tagged} of{" "}
-              {result.companyCoverage.total} recorded organizations. Others stay
-              searchable.
-            </p>
-          )}
         </div>
         {filters.companies.length > 0 && (
           <div className="flex flex-wrap gap-2">
@@ -645,107 +447,60 @@ export default function NetworkExplorer({
               onChange={(event) => change({ optedOnly: event.target.checked })}
               className="accent-accent"
             />
-            Only people opted in to the network
+            Opted in only
           </label>
           <Button variant="ghost" size="sm" onClick={reset}>
             Reset filters
           </Button>
         </div>
       </div>
-      <details
-        open={shortlistOpen}
-        onToggle={(event) => setShortlistOpen(event.currentTarget.open)}
-        className="rounded-xl border border-border p-4 md:p-5"
-      >
-        <summary className="cursor-pointer rounded font-heading text-base font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-          Your next three conversations{" "}
-          <span className="text-text-muted">{shortlist.length}/3</span>
-          <span className="ml-3 font-sans text-xs font-normal text-text-muted">
-            Your outreach shortlist
-          </span>
-        </summary>
-        <div className="mt-3" aria-labelledby="shortlist-title">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2
-              id="shortlist-title"
-              className="font-heading text-base font-semibold"
-            >
-              Your next three conversations{" "}
-              <span className="ml-1 text-text-muted">{shortlist.length}/3</span>
-            </h2>
-            <span className="text-xs text-text-muted">
-              Saved on this browser
-            </span>
-          </div>
-          <p className="mt-1 text-xs leading-relaxed text-text-muted">
-            Pick people you have a specific question for. Learn about their work
-            before asking for an introduction.
-          </p>
-          {shortlist.length ? (
-            <ul className="mt-4 grid gap-3 md:grid-cols-3">
-              {shortlist.map((person) => (
-                <li
-                  key={person.id}
-                  className="min-w-0 rounded-lg border border-border bg-surface p-3"
-                >
-                  <Link
-                    className="block truncate text-sm font-medium hover:text-accent-light focus-visible:ring-2 focus-visible:ring-accent"
-                    href={`/profile/${person.id}`}
-                  >
-                    {person.full_name}
-                  </Link>
-                  <p
-                    className="mt-1 truncate text-xs text-text-muted"
-                    title={person.current_company || ""}
-                  >
-                    {person.current_company || "Explore their background"}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    {canDraft(person) && (
-                      <button
-                        className="cursor-pointer rounded text-xs text-accent-light focus-visible:ring-2 focus-visible:ring-accent"
-                        onClick={() => openDraft(person)}
-                      >
-                        Draft a hello
-                      </button>
-                    )}
-                    <button
-                      className="cursor-pointer rounded text-xs text-text-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent"
-                      onClick={() => toggleShortlist(person)}
-                    >
-                      Remove<span className="sr-only"> {person.full_name}</span>
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-4 text-sm text-text-secondary">
-              Save someone below to start a small, intentional outreach plan.
-            </p>
-          )}
-          <p className="mt-2 text-xs text-accent-light">{notice}</p>
-          {shortlistError && (
-            <p role="alert" className="mt-2 text-xs text-red-400">
-              {shortlistError}
-            </p>
-          )}
-        </div>
-      </details>
-      <p role="status" className="sr-only">
-        {notice}
-      </p>
+      <ResumeMatching
+        wordOnly={result?.engine === "lexical"}
+        failed={!!error}
+        enabled={localEnabled}
+        busy={pending}
+        progress={localProgress}
+        warning={localWarning}
+        activeResume={!!resumeText || !!personalGoal}
+        onEnable={() => restartLocal(false)}
+        onDisable={() => {
+          matcher.current?.dispose();
+          matcher.current = null;
+          setLocalEnabled(false);
+          setLocalWarning("");
+        }}
+        onLexical={() => restartLocal(true)}
+        onRefresh={() => restartLocal(lexicalOnly)}
+        onApply={(text, goal) => {
+          setResumeText(text);
+          setPersonalGoal(goal);
+          setLocalEnabled(true);
+          setPage(1);
+          setMode("ranked");
+          previous.current = [];
+        }}
+        onForget={() => {
+          matcher.current?.dispose();
+          matcher.current = null;
+          setResumeText("");
+          setPersonalGoal("");
+          setLocalEnabled(false);
+          setLocalWarning("");
+          setPage(1);
+          setMode("ranked");
+          previous.current = [];
+        }}
+      />
       {draftPerson && (
         <div
           ref={draftPanel}
           className="rounded-xl border border-accent/40 bg-surface p-5"
         >
           <h2 className="font-heading font-semibold">
-            Say hello to {draftPerson.full_name.split(" ")[0]}
+            Message {draftPerson.full_name.split(" ")[0]}
           </h2>
           <p className="mt-1 text-xs text-text-muted">
-            Make the question yours and check their latest profile. Nothing is
-            sent automatically.
+            Personalize your message before copying.
           </p>
           <label
             className="mt-4 block text-xs text-text-secondary"
@@ -766,7 +521,7 @@ export default function NetworkExplorer({
           />
           <div className="mt-3 flex flex-wrap gap-3">
             <Button size="sm" onClick={copy} disabled={!draft.trim()}>
-              Copy draft
+              Copy message
             </Button>
             <Button
               size="sm"
@@ -777,13 +532,13 @@ export default function NetworkExplorer({
                 draftTrigger.current?.focus();
               }}
             >
-              Close draft
+              Close
             </Button>
           </div>
           <p className="mt-3 text-xs text-text-muted">
             {draftSaved
-              ? "Draft kept in this tab until the browser session ends."
-              : "Copy your draft before leaving; this browser can’t keep it."}
+              ? "Saved for this session."
+              : "Copy before leaving; session storage is unavailable."}
           </p>
           <p role="status" className="mt-3 text-xs text-text-secondary">
             {copyStatus}
@@ -797,22 +552,29 @@ export default function NetworkExplorer({
               id="ranking-title"
               className="font-heading text-xl font-semibold"
             >
-              {mode === "ranked"
-                ? "People, ranked"
-                : mode === "smart"
-                  ? "Your smart shuffle"
-                  : "A little outside your usual circle"}
+              Your network
             </h2>
-            <p className="mt-1 text-xs text-text-muted">
-              {
-                NETWORK_GOALS.find((goal) => goal.id === filters.goal)
-                  ?.description
-              }{" "}
-              {mode !== "ranked" &&
-                "Random draw; numbers keep their place in the filtered ranking."}
-            </p>
+            <div className="mt-1 flex items-center gap-3 text-xs">
+              <p role="status" className="text-text-muted">
+                {pending
+                  ? "Loading…"
+                  : error
+                    ? ""
+                    : `${mode === "ranked" ? (result?.total ?? 0) : (result?.data.length ?? 0)} ${mode === "ranked" ? "alumni" : "picks"}`}
+              </p>
+              <Link
+                href="/settings"
+                className="rounded text-accent-light hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                Edit interests
+              </Link>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div
+            className="flex flex-wrap gap-2"
+            role="group"
+            aria-label="Discovery mode"
+          >
             <Button
               size="sm"
               variant={mode === "ranked" ? "primary" : "secondary"}
@@ -820,11 +582,12 @@ export default function NetworkExplorer({
               disabled={pending}
               aria-pressed={mode === "ranked"}
             >
-              Ranked list
+              Ranked
             </Button>
             <Button
               size="sm"
-              variant="secondary"
+              variant={mode === "smart" ? "primary" : "secondary"}
+              aria-pressed={mode === "smart"}
               disabled={pending || result?.total === 0}
               onClick={() => {
                 setMode("smart");
@@ -835,7 +598,8 @@ export default function NetworkExplorer({
             </Button>
             <Button
               size="sm"
-              variant="secondary"
+              variant={mode === "wildcard" ? "primary" : "secondary"}
+              aria-pressed={mode === "wildcard"}
               disabled={pending || result?.total === 0}
               onClick={() => {
                 setMode("wildcard");
@@ -846,13 +610,6 @@ export default function NetworkExplorer({
             </Button>
           </div>
         </div>
-        <p role="status" className="text-xs text-text-muted">
-          {pending
-            ? "Updating your network…"
-            : error
-              ? "Results could not be updated."
-              : `${result?.total ?? 0} people in this ranking · ${result?.poolCount ?? 0} distinct people in your network, excluding you${mode === "ranked" && result?.total ? ` · showing ${(result.page - 1) * 12 + 1}–${Math.min(result.page * 12, result.total)}` : ""}`}
-        </p>
         {error ? (
           <div role="alert" className="rounded-xl border border-border p-6">
             <p className="text-sm text-red-400">{error}</p>
@@ -874,7 +631,7 @@ export default function NetworkExplorer({
               aria-hidden="true"
               className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-accent"
             />
-            Loading people…
+            Loading matches…
           </div>
         ) : !result?.data.length ? (
           <div className="rounded-xl border border-border p-8 text-center">
@@ -926,35 +683,13 @@ export default function NetworkExplorer({
                       </div>
                     )}
                     <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant={
-                          shortlist.some((item) => item.id === person.id)
-                            ? "primary"
-                            : "secondary"
-                        }
-                        onClick={() => toggleShortlist(person)}
-                        disabled={
-                          !shortlistReady || person.opt_status === "opted_out"
-                        }
-                        aria-pressed={shortlist.some(
-                          (item) => item.id === person.id,
-                        )}
-                      >
-                        {shortlist.some((item) => item.id === person.id)
-                          ? "Saved"
-                          : person.opt_status === "opted_out"
-                            ? "Outreach unavailable"
-                            : "Save for outreach"}
-                        <span className="sr-only"> {person.full_name}</span>
-                      </Button>
                       {canDraft(person) && (
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => openDraft(person)}
                         >
-                          Draft a hello
+                          Draft message
                           <span className="sr-only">
                             {" "}
                             to {person.full_name}
@@ -962,11 +697,9 @@ export default function NetworkExplorer({
                         </Button>
                       )}
                     </div>
-                    {person.opt_status !== "opted_in" && (
+                    {person.opt_status === "not_confirmed" && (
                       <p className="text-[11px] text-text-muted">
-                        {person.opt_status === "opted_out"
-                          ? "Opted out of the network; respect their preference."
-                          : "Hasn’t confirmed network participation. Availability is unknown."}
+                        Participation unconfirmed
                       </p>
                     )}
                   </div>

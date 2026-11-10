@@ -79,13 +79,10 @@ export default async function DirectoryPage() {
       <Navbar />
       <main className="pt-24 pb-16 px-6">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-8">
+          <div className="mb-6">
             <h1 className="font-heading font-bold text-3xl md:text-4xl tracking-tight">
               Alumni Directory
             </h1>
-            <p className="mt-2 text-text-muted">
-              Find TSE alumni at your target companies.
-            </p>
           </div>
 
           <Suspense>
